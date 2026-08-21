@@ -2,21 +2,40 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from io import BytesIO
+import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
 
+# --------------------------------------------------
+# APP CONFIG
+# --------------------------------------------------
+
 st.set_page_config(
-    page_title="Sensor Characterisation Suite",
+    page_title="Sensor Characterisation Suite V2",
     layout="wide"
 )
 
-st.title("Sensor Characterisation Suite")
+st.title("Sensor Characterisation Suite V2")
+
+# --------------------------------------------------
+# FILE UPLOAD
+# --------------------------------------------------
 
 uploaded = st.file_uploader(
     "Upload Excel or CSV file",
     type=["xlsx", "csv"]
 )
+
+# --------------------------------------------------
+# FUNCTIONS
+# --------------------------------------------------
+
+def r3(value):
+    try:
+        return round(float(value), 3)
+    except:
+        return value
+
 
 def load_file(file):
 
@@ -24,6 +43,11 @@ def load_file(file):
         return pd.read_csv(file)
 
     return pd.read_excel(file)
+
+
+# --------------------------------------------------
+# MAIN
+# --------------------------------------------------
 
 if uploaded:
 
@@ -34,13 +58,13 @@ if uploaded:
         for c in df.columns
     ]
 
-    required = [
-        "Expected_ppm",
+    required_cols = [
+        "Expected_umol_mol",
         "Signal_mA"
     ]
 
     missing = [
-        c for c in required
+        c for c in required_cols
         if c not in df.columns
     ]
 
@@ -52,51 +76,47 @@ if uploaded:
 
         st.stop()
 
-    # -----------------------------------
-    # 4–20 mA CONVERSION
-    # -----------------------------------
+    # ---------------------------------------
+    # Convert mA to μmol/mol
+    # ---------------------------------------
 
-    df["Measured_ppm"] = (
+    df["Measured_umol_mol"] = (
         (df["Signal_mA"] - 4)
         / 16
     ) * 20
 
-    # -----------------------------------
-    # ASCENDING / DESCENDING SPLIT
-    # -----------------------------------
+    # ---------------------------------------
+    # Split ascending / descending
+    # ---------------------------------------
 
     peak_idx = (
-        df["Expected_ppm"]
+        df["Expected_umol_mol"]
         .idxmax()
     )
 
     ascending = (
-        df.iloc[
-            :peak_idx + 1
-        ]
+        df.iloc[:peak_idx + 1]
         .copy()
     )
 
     descending = (
-        df.iloc[
-            peak_idx:
-        ]
+        df.iloc[peak_idx:]
         .copy()
     )
 
-    # -----------------------------------
-    # ACCURACY
-    # -----------------------------------
+    # ---------------------------------------
+    # Accuracy
+    # ---------------------------------------
 
     df["Error"] = (
-        df["Measured_ppm"]
-        - df["Expected_ppm"]
+        df["Measured_umol_mol"]
+        - df["Expected_umol_mol"]
     )
 
     df["Error_%"] = (
         df["Error"]
         /
-        df["Expected_ppm"]
+        df["Expected_umol_mol"]
         .replace(0, np.nan)
     ) * 100
 
@@ -119,78 +139,55 @@ if uploaded:
 
     rmse = np.sqrt(
         mean_squared_error(
-            df["Expected_ppm"],
-            df["Measured_ppm"]
+            df["Expected_umol_mol"],
+            df["Measured_umol_mol"]
         )
     )
 
-    # -----------------------------------
-    # LINEARITY
-    # -----------------------------------
+    # ---------------------------------------
+    # Linearity
+    # ---------------------------------------
 
-    X = df[
-        ["Expected_ppm"]
-    ]
+    X = df[["Expected_umol_mol"]]
 
-    y = df[
-        "Measured_ppm"
-    ]
+    y = df["Measured_umol_mol"]
 
     model = LinearRegression()
 
     model.fit(X, y)
 
-    predicted = (
-        model.predict(X)
-    )
+    predicted = model.predict(X)
 
-    slope = (
-        model.coef_[0]
-    )
+    slope = model.coef_[0]
 
-    intercept = (
-        model.intercept_
-    )
+    intercept = model.intercept_
 
     r2 = r2_score(
         y,
         predicted
     )
 
-    # -----------------------------------
-    # RESOLUTION
-    # -----------------------------------
+    # ---------------------------------------
+    # Resolution
+    # ---------------------------------------
 
-    ascending = (
-        ascending
-        .sort_values(
-            "Expected_ppm"
-        )
-        .reset_index(
-            drop=True
-        )
+    ascending = ascending.sort_values(
+        "Expected_umol_mol"
     )
 
-    ascending[
-        "Increment"
-    ] = (
-        ascending[
-            "Measured_ppm"
-        ].diff()
+    ascending["Increment"] = (
+        ascending["Measured_umol_mol"]
+        .diff()
     )
 
     resolution_mean = (
-        ascending[
-            "Increment"
-        ]
+        ascending["Increment"]
         .dropna()
         .mean()
     )
 
     resolution_sd = (
-        ascending[
-            "Increment"
-        ]
+        ascending["Increment"]
         .dropna()
         .std()
     )
@@ -200,18 +197,18 @@ if uploaded:
         /
         resolution_mean
         * 100
-    ) if resolution_mean != 0 else np.nan
+    )
 
-    # -----------------------------------
-    # REVERSIBILITY
-    # -----------------------------------
+    # ---------------------------------------
+    # Reversibility
+    # ---------------------------------------
 
     up = (
         ascending
         .groupby(
-            "Expected_ppm"
+            "Expected_umol_mol"
         )[
-            "Measured_ppm"
+            "Measured_umol_mol"
         ]
         .mean()
     )
@@ -219,9 +216,9 @@ if uploaded:
     down = (
         descending
         .groupby(
-            "Expected_ppm"
+            "Expected_umol_mol"
         )[
-            "Measured_ppm"
+            "Measured_umol_mol"
         ]
         .mean()
     )
@@ -233,144 +230,119 @@ if uploaded:
         )
     )
 
-    reversibility_df = (
-        pd.DataFrame({
+    rev_df = pd.DataFrame({
 
-            "Expected_ppm":
-            common,
+        "Expected_umol_mol":
+        common,
 
-            "Ascending":
-            up.loc[
-                common
-            ].values,
+        "Ascending":
+        up.loc[common].values,
 
-            "Descending":
-            down.loc[
-                common
-            ].values
+        "Descending":
+        down.loc[common].values
 
-        })
-    )
+    })
 
-    reversibility_df[
-        "Difference"
-    ] = (
-        reversibility_df[
-            "Ascending"
-        ]
+    rev_df["Difference"] = (
+        rev_df["Ascending"]
         -
-        reversibility_df[
-            "Descending"
-        ]
+        rev_df["Descending"]
     ).abs()
 
     max_difference = (
-        reversibility_df[
-            "Difference"
-        ].max()
+        rev_df["Difference"]
+        .max()
     )
 
     fso = (
-        df[
-            "Measured_ppm"
-        ].max()
+        df["Measured_umol_mol"]
+        .max()
         -
-        df[
-            "Measured_ppm"
-        ].min()
+        df["Measured_umol_mol"]
+        .min()
     )
 
     reversibility_pct = (
         max_difference
         /
         fso
-        * 100
-    ) if fso != 0 else np.nan
+    ) * 100
 
-    # -----------------------------------
-    # HYSTERESIS
-    # -----------------------------------
+    # ---------------------------------------
+    # Hysteresis
+    # ---------------------------------------
 
     hysteresis_max = (
-        reversibility_df[
-            "Difference"
-        ].max()
+        rev_df["Difference"]
+        .max()
     )
 
     hysteresis_mean = (
-        reversibility_df[
-            "Difference"
-        ].mean()
+        rev_df["Difference"]
+        .mean()
     )
 
     hysteresis_pct = (
         hysteresis_max
         /
         fso
-        * 100
-    ) if fso != 0 else np.nan
+    ) * 100
 
-    # -----------------------------------
-    # TABS
-    # -----------------------------------
+    # ---------------------------------------
+    # Tabs
+    # ---------------------------------------
 
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tabs = st.tabs([
         "Data",
         "Linearity",
         "Accuracy",
         "Resolution",
         "Reversibility",
         "Hysteresis",
-        "Summary"
+        "Summary",
+        "Methods & Formulae"
     ])
 
-    with tab1:
+    # =======================================
+    # DATA
+    # =======================================
 
-        st.dataframe(
-            df,
+    with tabs[0.dataframe(
+            df.round(3),
             use_container_width=True
         )
 
-    with tab2:
+    # =======================================
+    # LINEARITY
+    # =======================================
 
-        st.metric(
+    with tabsst.metric(
             "Slope",
-            round(
-                slope,
-                6
-            )
+            r3(slope)
         )
 
         st.metric(
             "Intercept",
-            round(
-                intercept,
-                6
-            )
+            r3(intercept)
         )
 
         st.metric(
             "R²",
-            round(
-                r2,
-                6
-            )
+            r3(r2)
         )
 
         fig = px.scatter(
             df,
-            x="Expected_ppm",
-            y="Measured_ppm",
-            title="Calibration Curve"
+            x="Expected_umol_mol",
+            y="Measured_umol_mol",
+            title="Linearity Assessment"
         )
 
         fig.add_scatter(
-            x=df[
-                "Expected_ppm"
-            ],
+            x=df["Expected_umol_mol"],
             y=predicted,
             mode="lines",
-            name="Regression"
+            name=f"y={slope:.3f}x+{intercept:.3f}"
         )
 
         st.plotly_chart(
@@ -378,87 +350,84 @@ if uploaded:
             use_container_width=True
         )
 
-    with tab3:
+    # =======================================
+    # ACCURACY
+    # =======================================
 
-        st.metric(
+    with tabsst.metric(
             "Mean Error",
-            round(
-                mean_error,
-                6
-            )
+            r3(mean_error)
         )
 
         st.metric(
             "Maximum Error",
-            round(
-                max_error,
-                6
-            )
+            r3(max_error)
         )
 
         st.metric(
             "RMSE",
-            round(
-                rmse,
-                6
-            )
+            r3(rmse)
         )
 
         st.dataframe(
             df[
                 [
-                    "Expected_ppm",
-                    "Measured_ppm",
+                    "Expected_umol_mol",
+                    "Measured_umol_mol",
                     "Error",
                     "Error_%"
                 ]
-            ]
+            ].round(3)
         )
 
-    with tab4:
+    # =======================================
+    # RESOLUTION
+    # =======================================
 
-        st.metric(
+    with tabsst.metric(
             "Mean Increment",
-            round(
-                resolution_mean,
-                6
-            )
+            r3(resolution_mean)
         )
 
         st.metric(
             "SD",
-            round(
-                resolution_sd,
-                6
-            )
+            r3(resolution_sd)
         )
 
         st.metric(
             "RSD (%)",
-            round(
-                resolution_rsd,
-                2
-            )
+            r3(resolution_rsd)
         )
 
-    with tab5:
+    # =======================================
+    # REVERSIBILITY
+    # =======================================
 
-        st.metric(
+    with tabsst.metric(
             "Reversibility (%FSO)",
-            round(
-                reversibility_pct,
-                4
+            r3(reversibility_pct)
+        )
+
+        fig_rev = go.Figure()
+
+        fig_rev.add_trace(
+            go.Scatter(
+                y=df["Measured_umol_mol"],
+                mode="lines",
+                name="Measured"
             )
         )
 
-        fig_rev = px.line(
-            reversibility_df,
-            x="Expected_ppm",
-            y=[
-                "Ascending",
-                "Descending"
-            ],
-            markers=True
+        fig_rev.add_trace(
+            go.Scatter(
+                y=df["Expected_umol_mol"],
+                mode="lines",
+                name="Expected"
+            )
+        )
+
+        fig_rev.update_layout(
+            title="Reversibility Response"
         )
 
         st.plotly_chart(
@@ -466,49 +435,61 @@ if uploaded:
             use_container_width=True
         )
 
-    with tab6:
+    # =======================================
+    # HYSTERESIS
+    # =======================================
 
-        st.metric(
+    with tabsst.metric(
             "Maximum Hysteresis",
-            round(
-                hysteresis_max,
-                6
-            )
+            r3(hysteresis_max)
         )
 
         st.metric(
             "Mean Hysteresis",
-            round(
-                hysteresis_mean,
-                6
-            )
+            r3(hysteresis_mean)
         )
 
         st.metric(
             "Hysteresis (%FSO)",
-            round(
-                hysteresis_pct,
-                4
+            r3(hysteresis_pct)
+        )
+
+        fig_loop = go.Figure()
+
+        fig_loop.add_trace(
+            go.Scatter(
+                x=rev_df["Expected_umol_mol"],
+                y=rev_df["Ascending"],
+                mode="lines+markers",
+                name="Ascending"
             )
         )
 
-        fig_h = px.bar(
-            reversibility_df,
-            x="Expected_ppm",
-            y="Difference"
+        fig_loop.add_trace(
+            go.Scatter(
+                x=rev_df["Expected_umol_mol"],
+                y=rev_df["Descending"],
+                mode="lines+markers",
+                name="Descending"
+            )
+        )
+
+        fig_loop.update_layout(
+            title="Hysteresis Loop"
         )
 
         st.plotly_chart(
-            fig_h,
+            fig_loop,
             use_container_width=True
         )
 
-    with tab7:
+    # =======================================
+    # SUMMARY
+    # =======================================
 
-        summary = pd.DataFrame({
+    with tabssummary = pd.DataFrame({
 
             "Metric": [
-
                 "Slope",
                 "Intercept",
                 "R²",
@@ -518,21 +499,18 @@ if uploaded:
                 "Resolution",
                 "Reversibility (%FSO)",
                 "Hysteresis (%FSO)"
-
             ],
 
             "Value": [
-
-                slope,
-                intercept,
-                r2,
-                mean_error,
-                max_error,
-                rmse,
-                resolution_mean,
-                reversibility_pct,
-                hysteresis_pct
-
+                r3(slope),
+                r3(intercept),
+                r3(r2),
+                r3(mean_error),
+                r3(max_error),
+                r3(rmse),
+                r3(resolution_mean),
+                r3(reversibility_pct),
+                r3(hysteresis_pct)
             ]
         })
 
@@ -541,40 +519,76 @@ if uploaded:
             use_container_width=True
         )
 
-        buffer = BytesIO()
+    # =======================================
+    # METHODS
+    # =======================================
 
-        with pd.ExcelWriter(
-            buffer,
-            engine="openpyxl"
-        ) as writer:
+    with tabsst.markdown("""
+# Methods & Formulae
 
-            df.to_excel(
-                writer,
-                sheet_name="Raw_Data",
-                index=False
-            )
+## Signal Conversion
 
-            reversibility_df.to_excel(
-                writer,
-                sheet_name="Reversibility",
-                index=False
-            )
+Measured concentration (μmol/mol)
 
-            summary.to_excel(
-                writer,
-                sheet_name="Summary",
-                index=False
-            )
+((Signal_mA - 4) / 16) × 20
 
-        st.download_button(
-            "Download Excel Report",
-            data=buffer.getvalue(),
-            file_name="sensor_characterisation.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+---
+
+## Accuracy
+
+Error = Measured - Expected
+
+Error (%) =
+(Error / Expected) × 100
+
+---
+
+## Linearity
+
+Measured = m × Expected + b
+
+Reported:
+
+- Slope
+- Intercept
+- R²
+
+---
+
+## Resolution
+
+Increment =
+Current Measurement − Previous Measurement
+
+RSD (%) =
+(SD / Mean) × 100
+
+---
+
+## Reversibility
+
+Reversibility (%FSO) =
+Max(|Ascending − Descending|)
+÷ FSO × 100
+
+---
+
+## Hysteresis
+
+Hysteresis (%FSO) =
+Max(|Ascending − Descending|)
+÷ FSO × 100
+
+---
+
+## Full Scale Output
+
+FSO =
+Maximum Output − Minimum Output
+""")
 
 else:
 
     st.info(
-        "Upload a file to begin analysis."
+        "Upload a file containing Expected_umol_mol and Signal_mA."
     )
