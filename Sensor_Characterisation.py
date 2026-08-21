@@ -348,7 +348,6 @@ if uploaded_file:
    # --------------------------------------------------------------
 # Tabs
 # --------------------------------------------------------------
-
 tabs = st.tabs([
     "Summary",
     "Linearity",
@@ -360,66 +359,52 @@ tabs = st.tabs([
     "Methods & Formulae"
 ])
 
-with tabsst.dataframe(summary_df)
-
-with tabs[1]:
-    ste(round_df(linearity_df))
-
-with tabs[2]:
-    st.dataframe(round_df_df))
+with tabs[0]:
+    st.dataframe(summaryh tabs[1]:
+    st.dataframe(round_df(linearityth tabs[2]:
+    st.dataframe(round_cy_df))
 
 with tabs[3]:
-    st.dataframe(resolution_df))
-
-with tabs[4]:
+    st.dataframe(round_df(resolutionth tabs[4]:
     if len(reversibility_df):
-        ame(round_df(reversibility_df))
+t.dataframe(round_df(reversibility_df))
     else:
-        st.info(
-            "Reversibility requires repeated concentrations."
-        )
+        st.info("Reversibility requires repeated concentrations.")
 
 with tabs[5]:
     if len(hysteresis_df):
-        st.dataframe(round_df(hyster
+        st.dataframe(round_df(hysteresis_df))
     else:
-        st.info(
-            "Hysteresis requires repeated concentrations."
-        )
+        st.info("Hysteresis requires repeated concentrations.")
 
-with tabsst.dataframe(round_df(pass_fail_df))
+with tabs[6]:
+    st.dataframe(round_df(pass_fail_df))
 
 with tabs[7]:
     st.markdown("""
 ### Linearity
-
 Signal = m × Concentration + c
 
 ### Accuracy
+Error = Measured −
 
-Accuracy Error = − Expected
+Accuracy (%FS):
 
-%FS = (Error / Full Scale) × 100
+(Error / Full Scale) × 100
 
 ### Resolution
-
 Resolution = Noise ÷ Sensitivity
 
 ### Reversibility
-
-Difference between repeated measurements
-at the same concentration.
+Difference between repeated measurements at the same concentration.
 
 ### Hysteresis
-
-Maximum spread between repeated measurements
-at the same concentration.
+Maximum difference between repeated measurements at the same concentration.
 
 ### Pass / Fail
-
-Results are compared against user-defined
-acceptance limits.
+Comparison against user-defined acceptance limits.
 """)
+
 
     # --------------------------------------------------------------
     # Excel Export
