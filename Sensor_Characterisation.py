@@ -5,9 +5,9 @@ from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-# --------------------------------------------------
+# ============================================================
 # Page Setup
-# --------------------------------------------------
+# ============================================================
 
 st.set_page_config(
     page_title="Sensor Characterisation Suite",
@@ -16,16 +16,15 @@ st.set_page_config(
 
 st.title("Sensor Characterisation Suite")
 
-# --------------------------------------------------
+# ============================================================
 # Helper Functions
-# --------------------------------------------------
+# ============================================================
 
 def round_df(df):
     return df.round(3)
 
 
-def calculate_regression(x, y):
-
+def perform_regression(x, y):
     model = LinearRegression()
     model.fit(x.reshape(-1, 1), y)
 
@@ -40,21 +39,21 @@ def calculate_regression(x, y):
 
 def calculate_resolution(signal, concentration):
 
-    fit = np.polyfit(concentration, signal, 1)
+    coeffs = np.polyfit(concentration, signal, 1)
 
-    sensitivity = fit[0]
+    sensitivity = coeffs[0]
 
-    noise = np.std(
-        signal - np.polyval(fit, concentration)
-    )
+    fitted = np.polyval(coeffs, concentration)
 
-    if sensitivity == 0:
+    noise = np.std(signal - fitted)
+
+    if abs(sensitivity) < 1e-12:
         return np.nan
 
     return noise / abs(sensitivity)
 
 
-def build_excel(sheets):
+def create_excel_report(sheet_dict):
 
     output = BytesIO()
 
@@ -63,7 +62,7 @@ def build_excel(sheets):
         engine="openpyxl"
     ) as writer:
 
-        for sheet_name, df in sheets.items():
+        for sheet_name, df in sheet_dict.items():
             df.to_excel(
                 writer,
                 sheet_name=sheet_name[:31],
@@ -75,9 +74,9 @@ def build_excel(sheets):
     return output
 
 
-# --------------------------------------------------
+# ============================================================
 # User Inputs
-# --------------------------------------------------
+# ============================================================
 
 uploaded_file = st.file_uploader(
     "Upload CSV or Excel file",
@@ -85,7 +84,7 @@ uploaded_file = st.file_uploader(
 )
 
 full_scale = st.number_input(
-    "Full Scale Concentration (umol/mol)",
+    "Full Scale Concentration (µmol/mol)",
     min_value=1.0,
     value=100.0
 )
@@ -102,335 +101,393 @@ linearity_limit = st.number_input(
     value=2.0
 )
 
-# --------------------------------------------------
-# Main Processing
-# --------------------------------------------------
+# ============================================================
+# Data Processing
+# ============================================================
 
-if uploaded_file:
+if uploaded_file is not None:
 
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+    try:
 
-    required_columns = [
-        "Expected_umol_mol",
-        "Signal_mA"
-    ]
+        if uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file)
 
-    missing = [
-        col
-        for col in required_columns
-        if col not in df.columns
-    ]
+        required_columns = [
+            "Expected_umol_mol",
+            "Signal_mA"
+        ]
 
-    if missing:
-        st.error(
-            f"Missing required columns: {missing}"
+        missing = [
+            c for c in required_columns
+            if c not in df.columns
+        ]
+
+        if missing:
+            st.error(
+                f"Missing required columns: {missing}"
+            )
+            st.stop()
+
+        # ----------------------------------------------------
+
+        x = df["Expected_umol_mol"].astype(float).values
+        y = df["Signal_mA"].astype(float).values
+
+        slope, intercept, r2, predicted_signal = (
+            perform_regression(x, y)
         )
-        st.stop()
 
-    # --------------------------------------------------
-    # Data
-    # --------------------------------------------------
+        calculated_concentration = (
+            y - intercept
+        ) / slope
 
-    df = df.copy()
+        df["Calculated_umol_mol"] = (
+            calculated_concentration
+        )
 
-    x = df["Expected_umol_mol"].astype(float).values
-    y = df["Signal_mA"].astype(float).values
+        # ====================================================
+        # Linearity
+        # ====================================================
 
-    # --------------------------------------------------
-    # Regression
-    # --------------------------------------------------
+        residuals = y - predicted_signal
 
-    slope, intercept, r2, y_fit = calculate_regression(
-        x,
-        y
-    )
+        linearity_df = pd.DataFrame({
+            "Expected_umol_mol": x,
+            "Signal_mA": y,
+            "Predicted_mA": predicted_signal,
+            "Residual_mA": residuals
+        })
 
-    calculated_concentration = (
-        y - intercept
-    ) / slope
+        signal_span = (
+            predicted_signal.max()
+            - predicted_signal.min()
+        )
 
-    df["Calculated_umol_mol"] = calculated_concentration
+        max_residual = np.abs(
+            residuals
+        ).max()
 
-    # --------------------------------------------------
-    # Linearity
-    # --------------------------------------------------
+        if signal_span > 0:
+            linearity_percent_fs = (
+                max_residual / signal_span
+            ) * 100
+        else:
+            linearity_percent_fs = np.nan
 
-    linearity_df = pd.DataFrame({
-        "Expected_umol_mol": x,
-        "Signal_mA": y,
-        "Predicted_mA": y_fit,
-        "Residual_mA": y - y_fit
-    })
+        # ====================================================
+        # Accuracy
+        # ====================================================
 
-    max_residual = np.abs(
-        linearity_df["Residual_mA"]
-    ).max()
+        accuracy_df = pd.DataFrame({
+            "Expected_umol_mol": x,
+            "Measured_umol_mol":
+                calculated_concentration
+        })
 
-    signal_span = np.max(y_fit) - np.min(y_fit)
+        accuracy_df["Error_umol_mol"] = (
+            accuracy_df["Measured_umol_mol"]
+            - accuracy_df["Expected_umol_mol"]
+        )
 
-    if signal_span == 0:
-        linearity_percent_fs = np.nan
-    else:
-        linearity_percent_fs = (
-            max_residual / signal_span
+        accuracy_df["Absolute_Error_umol_mol"] = (
+            accuracy_df["Error_umol_mol"].abs()
+        )
+
+        max_accuracy_error = (
+            accuracy_df[
+                "Absolute_Error_umol_mol"
+            ].max()
+        )
+
+        accuracy_percent_fs = (
+            max_accuracy_error / full_scale
         ) * 100
 
-    # --------------------------------------------------
-    # Accuracy
-    # --------------------------------------------------
+        # ====================================================
+        # Resolution
+        # ====================================================
 
-    accuracy_df = pd.DataFrame({
-        "Expected_umol_mol": x,
-        "Measured_umol_mol": calculated_concentration
-    })
-
-    accuracy_df["Error_umol_mol"] = (
-        accuracy_df["Measured_umol_mol"]
-        - accuracy_df["Expected_umol_mol"]
-    )
-
-    accuracy_df["Absolute_Error_umol_mol"] = np.abs(
-        accuracy_df["Error_umol_mol"]
-    )
-
-    max_accuracy_error = accuracy_df[
-        "Absolute_Error_umol_mol"
-    ].max()
-
-    accuracy_percent_fs = (
-        max_accuracy_error / full_scale
-    ) * 100
-
-    # --------------------------------------------------
-    # Resolution
-    # --------------------------------------------------
-
-    resolution_value = calculate_resolution(
-        y,
-        x
-    )
-
-    resolution_df = pd.DataFrame({
-        "Resolution_umol_mol": [resolution_value]
-    })
-
-    # --------------------------------------------------
-    # Reversibility
-    # --------------------------------------------------
-
-    reversibility_rows = []
-
-    for conc, grp in df.groupby(
-        "Expected_umol_mol"
-    ):
-
-        if len(grp) >= 2:
-
-            first = grp[
-                "Calculated_umol_mol"
-            ].iloc[0]
-
-            last = grp[
-                "Calculated_umol_mol"
-            ].iloc[-1]
-
-            diff = abs(last - first)
-
-            reversibility_rows.append([
-                conc,
-                first,
-                last,
-                diff
-            ])
-
-    reversibility_df = pd.DataFrame(
-        reversibility_rows,
-        columns=[
-            "Expected_umol_mol",
-            "First",
-            "Last",
-            "Difference"
-        ]
-    )
-
-    # --------------------------------------------------
-    # Hysteresis
-    # --------------------------------------------------
-
-    hysteresis_rows = []
-
-    for conc, grp in df.groupby(
-        "Expected_umol_mol"
-    ):
-
-        if len(grp) >= 2:
-
-            hyst = (
-                grp["Calculated_umol_mol"].max()
-                - grp["Calculated_umol_mol"].min()
-            )
-
-            hysteresis_rows.append([
-                conc,
-                hyst
-            ])
-
-    hysteresis_df = pd.DataFrame(
-        hysteresis_rows,
-        columns=[
-            "Expected_umol_mol",
-            "Hysteresis"
-        ]
-    )
-
-    # --------------------------------------------------
-    # Pass Fail
-    # --------------------------------------------------
-
-    pass_fail_df = pd.DataFrame({
-        "Parameter": [
-            "Linearity",
-            "Accuracy"
-        ],
-        "Result_%FS": [
-            linearity_percent_fs,
-            accuracy_percent_fs
-        ],
-        "Limit_%FS": [
-            linearity_limit,
-            accuracy_limit
-        ]
-    })
-
-    pass_fail_df["Status"] = np.where(
-        pass_fail_df["Result_%FS"]
-        <= pass_fail_df["Limit_%FS"],
-        "PASS",
-        "FAIL"
-    )
-
-    # --------------------------------------------------
-    # Summary
-    # --------------------------------------------------
-
-    summary_df = pd.DataFrame({
-        "Metric": [
-            "Slope",
-            "Intercept",
-            "R²",
-            "Max Accuracy Error",
-            "Accuracy %FS",
-            "Linearity %FS",
-            "Resolution"
-        ],
-        "Value": [
-            slope,
-            intercept,
-            r2,
-            max_accuracy_error,
-            accuracy_percent_fs,
-            linearity_percent_fs,
-            resolution_value
-        ]
-    })
-
-    summary_df = round_df(summary_df)
-
-    # --------------------------------------------------
-    # Tabs
-    # --------------------------------------------------
-
-    tabs = st.tabs([
-        "Summary",
-        "Linearity",
-        "Accuracy",
-        "Resolution",
-        "Reversibility",
-        "Hysteresis",
-        "Pass / Fail",
-        "Methods & Formulae"
-    ])
-
-    with tabsst.dataframe(summary_df)
-
-    with tabsst.dataframe(round_df(linearity_df))
-
-    with tabsst.dataframe(round_df(accuracy_df))
-
-    with tabsst.dataframe(round_df(resolution_df))
-
-    with tabsif len(reversibility_df):
-            st.dataframe(
-                round_df(reversibility_df)
-            )
-        else:
-            st.info(
-                "No repeated concentration points available."
-            )
-
-    with tabsif len(hysteresis_df):
-            st.dataframe(
-                round_df(hysteresis_df)
-            )
-        else:
-            st.info(
-                "No repeated concentration points available."
-            )
-
-    with tabsst.dataframe(
-            round_df(pass_fail_df)
+        resolution_value = calculate_resolution(
+            y,
+            x
         )
 
-    with tabsst.markdown("""
+        resolution_df = pd.DataFrame({
+            "Resolution_umol_mol":
+                [resolution_value]
+        })
+
+        # ====================================================
+        # Reversibility
+        # ====================================================
+
+        reversibility_rows = []
+
+        for conc, grp in df.groupby(
+            "Expected_umol_mol"
+        ):
+
+            if len(grp) >= 2:
+
+                first = grp[
+                    "Calculated_umol_mol"
+                ].iloc[0]
+
+                last = grp[
+                    "Calculated_umol_mol"
+                ].iloc[-1]
+
+                reversibility_rows.append([
+                    conc,
+                    first,
+                    last,
+                    abs(last - first)
+                ])
+
+        reversibility_df = pd.DataFrame(
+            reversibility_rows,
+            columns=[
+                "Expected_umol_mol",
+                "First",
+                "Last",
+                "Difference"
+            ]
+        )
+
+        # ====================================================
+        # Hysteresis
+        # ====================================================
+
+        hysteresis_rows = []
+
+        for conc, grp in df.groupby(
+            "Expected_umol_mol"
+        ):
+
+            if len(grp) >= 2:
+
+                spread = (
+                    grp[
+                        "Calculated_umol_mol"
+                    ].max()
+                    -
+                    grp[
+                        "Calculated_umol_mol"
+                    ].min()
+                )
+
+                hysteresis_rows.append([
+                    conc,
+                    spread
+                ])
+
+        hysteresis_df = pd.DataFrame(
+            hysteresis_rows,
+            columns=[
+                "Expected_umol_mol",
+                "Hysteresis"
+            ]
+        )
+
+        # ====================================================
+        # Pass / Fail
+        # ====================================================
+
+        pass_fail_df = pd.DataFrame({
+            "Parameter": [
+                "Linearity",
+                "Accuracy"
+            ],
+            "Result_%FS": [
+                linearity_percent_fs,
+                accuracy_percent_fs
+            ],
+            "Limit_%FS": [
+                linearity_limit,
+                accuracy_limit
+            ]
+        })
+
+        pass_fail_df["Status"] = np.where(
+            pass_fail_df["Result_%FS"]
+            <= pass_fail_df["Limit_%FS"],
+            "PASS",
+            "FAIL"
+        )
+
+        # ====================================================
+        # Summary
+        # ====================================================
+
+        summary_df = pd.DataFrame({
+            "Metric": [
+                "Slope",
+                "Intercept",
+                "R²",
+                "Linearity %FS",
+                "Accuracy %FS",
+                "Resolution"
+            ],
+            "Value": [
+                slope,
+                intercept,
+                r2,
+                linearity_percent_fs,
+                accuracy_percent_fs,
+                resolution_value
+            ]
+        })
+
+        summary_df = round_df(summary_df)
+
+        # ====================================================
+        # Tabs
+        # ====================================================
+
+        (
+            tab1,
+            tab2,
+            tab3,
+            tab4,
+            tab5,
+            tab6,
+            tab7,
+            tab8
+        ) = st.tabs([
+            "Summary",
+            "Linearity",
+            "Accuracy",
+            "Resolution",
+            "Reversibility",
+            "Hysteresis",
+            "Pass / Fail",
+            "Methods & Formulae"
+        ])
+
+        with tab1:
+            st.dataframe(summary_df)
+
+        with tab2:
+            st.dataframe(
+                round_df(linearity_df)
+            )
+
+        with tab3:
+            st.dataframe(
+                round_df(accuracy_df)
+            )
+
+        with tab4:
+            st.dataframe(
+                round_df(resolution_df)
+            )
+
+        with tab5:
+
+            if len(reversibility_df):
+                st.dataframe(
+                    round_df(reversibility_df)
+                )
+            else:
+                st.info(
+                    "No repeated points available."
+                )
+
+        with tab6:
+
+            if len(hysteresis_df):
+                st.dataframe(
+                    round_df(hysteresis_df)
+                )
+            else:
+                st.info(
+                    "No repeated points available."
+                )
+
+        with tab7:
+            st.dataframe(
+                round_df(pass_fail_df)
+            )
+
+        with tab8:
+
+            st.markdown("""
 ### Linearity
 
 Signal = m × Concentration + c
+
+---
 
 ### Accuracy
 
 Error = Measured − Expected
 
-Accuracy (%FS):
+Accuracy (%FS)
 
 (Error / Full Scale) × 100
 
+---
+
 ### Resolution
 
-Resolution = Noise ÷ Sensitivity
+Resolution = Noise / Sensitivity
+
+---
 
 ### Reversibility
 
-Difference between first and last measurements at the same concentration.
+Difference between first and last measurement at the same concentration.
+
+---
 
 ### Hysteresis
 
 Maximum spread between repeated measurements at the same concentration.
 
+---
+
 ### Pass / Fail
 
-Results compared against user-defined limits.
+Results are compared against user-defined limits.
 """)
 
-    # --------------------------------------------------
-    # Excel Export
-    # --------------------------------------------------
+        # ====================================================
+        # Excel Export
+        # ====================================================
 
-    excel_file = build_excel({
-        "Summary": round_df(summary_df),
-        "Linearity": round_df(linearity_df),
-        "Accuracy": round_df(accuracy_df),
-        "Resolution": round_df(resolution_df),
-        "Reversibility": round_df(reversibility_df),
-        "Hysteresis": round_df(hysteresis_df),
-        "PassFail": round_df(pass_fail_df)
-    })
+        excel_file = create_excel_report({
 
-    st.download_button(
-        "Download Excel Report",
-        excel_file,
-        file_name="Sensor_Characterisation_Report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+            "Summary":
+                round_df(summary_df),
+
+            "Linearity":
+                round_df(linearity_df),
+
+            "Accuracy":
+                round_df(accuracy_df),
+
+            "Resolution":
+                round_df(resolution_df),
+
+            "Reversibility":
+                round_df(reversibility_df),
+
+            "Hysteresis":
+                round_df(hysteresis_df),
+
+            "PassFail":
+                round_df(pass_fail_df)
+
+        })
+
+        st.download_button(
+            "Download Excel Report",
+            data=excel_file,
+            file_name="Sensor_Characterisation_Report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    except Exception as e:
+        st.exception(e)
