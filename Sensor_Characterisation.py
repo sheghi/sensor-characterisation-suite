@@ -345,79 +345,80 @@ if uploaded_file:
 
     summary_df = round_df(summary_df)
 
-    # --------------------------------------------------------------
-    # Tabs
-    # --------------------------------------------------------------
+   # --------------------------------------------------------------
+# Tabs
+# --------------------------------------------------------------
 
-    tabs = st.tabs([
-        "Summary",
-        "Linearity",
-        "Accuracy",
-        "Resolution",
-        "Reversibility",
-        "Hysteresis",
-        "Pass / Fail",
-        "Methods & Formulae"
-    ])
+tabs = st.tabs([
+    "Summary",
+    "Linearity",
+    "Accuracy",
+    "Resolution",
+    "Reversibility",
+    "Hysteresis",
+    "Pass / Fail",
+    "Methods & Formulae"
+])
 
-    with tabsst.dataframe(summary_df)
+with tabsst.dataframe(summary_df)
 
-    with tabsst.dataframe(round_df(linearity_df))
+with tabs[1]:
+    ste(round_df(linearity_df))
 
-    with tabsst.dataframe(round_df(accuracy_df))
+with tabs[2]:
+    st.dataframe(round_df_df))
 
-    with tabsst.dataframe(round_df(resolution_df))
+with tabs[3]:
+    st.dataframe(resolution_df))
 
-    with tabsif len(reversibility_df):
-            st.dataframe(round_df(reversibility_df))
-        else:
-            st.info(
-                "Reversibility requires repeated concentrations."
-            )
+with tabs[4]:
+    if len(reversibility_df):
+        ame(round_df(reversibility_df))
+    else:
+        st.info(
+            "Reversibility requires repeated concentrations."
+        )
 
-    with tabsif len(hysteresis_df):
-            st.dataframe(round_df(hysteresis_df))
-        else:
-            st.info(
-                "Hysteresis requires repeated concentrations."
-            )
+with tabs[5]:
+    if len(hysteresis_df):
+        st.dataframe(round_df(hyster
+    else:
+        st.info(
+            "Hysteresis requires repeated concentrations."
+        )
 
-    with tabsst.dataframe(round_df(pass_fail_df))
+with tabsst.dataframe(round_df(pass_fail_df))
 
-    with tabsst.markdown("""
+with tabs[7]:
+    st.markdown("""
 ### Linearity
-
-Linear regression:
 
 Signal = m × Concentration + c
 
 ### Accuracy
 
-Accuracy Error:
+Accuracy Error = − Expected
 
-Measured − Expected
-
-%FS:
-
-(Error / Full Scale) × 100
+%FS = (Error / Full Scale) × 100
 
 ### Resolution
 
-Resolution:
-
-Noise / Sensitivity
+Resolution = Noise ÷ Sensitivity
 
 ### Reversibility
 
-Difference between repeated measurements at the same concentration.
+Difference between repeated measurements
+at the same concentration.
 
 ### Hysteresis
 
-Maximum spread of repeated measurements at the same concentration.
+Maximum spread between repeated measurements
+at the same concentration.
 
 ### Pass / Fail
 
-Compared against user-entered acceptance limits.
+Results are compared against user-defined
+acceptance limits.
 """)
 
     # --------------------------------------------------------------
