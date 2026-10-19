@@ -16,7 +16,9 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Sensor Characterisation Suite")
+st.title(
+    "Sensor Characterisation Suite"
+)
 
 
 # ==========================================================
@@ -36,7 +38,13 @@ def round_sig(x, sig=4):
 
     return round(
         x,
-        sig - int(np.floor(np.log10(abs(x)))) - 1
+        sig - int(
+            np.floor(
+                np.log10(
+                    abs(x)
+                )
+            )
+        ) - 1
     )
 
 
@@ -70,7 +78,9 @@ def fit_calibration(x, y):
         x.reshape(-1, 1)
     )
 
-    slope = float(model.coef_[0])
+    slope = float(
+        model.coef_[0]
+    )
 
     intercept = float(
         model.intercept_
@@ -117,6 +127,10 @@ bias_limit = st.number_input(
     value=2.0
 )
 
+hysteresis_limit = st.number_input(
+    "Maximum Hysteresis (µmol/mol)",
+    value=1.0
+)
 # ==========================================================
 # MAIN
 # ==========================================================
@@ -125,7 +139,13 @@ if uploaded_file is not None:
 
     try:
 
-        if uploaded_file.name.endswith(".csv"):
+        # --------------------------------------------------
+        # LOAD FILE
+        # --------------------------------------------------
+
+        if uploaded_file.name.endswith(
+            ".csv"
+        ):
 
             df = pd.read_csv(
                 uploaded_file
@@ -136,6 +156,10 @@ if uploaded_file is not None:
             df = pd.read_excel(
                 uploaded_file
             )
+
+        # --------------------------------------------------
+        # VALIDATE INPUT
+        # --------------------------------------------------
 
         required_columns = [
 
@@ -160,17 +184,37 @@ if uploaded_file is not None:
 
             st.stop()
 
+        # --------------------------------------------------
+        # EXTRACT DATA
+        # --------------------------------------------------
+
         generated = (
-            df["Generated_umol_mol"]
+
+            df[
+                "Generated_umol_mol"
+            ]
+
             .astype(float)
+
             .to_numpy()
+
         )
 
         response = (
-            df["Sensor_Response_umol_mol"]
+
+            df[
+                "Sensor_Response_umol_mol"
+            ]
+
             .astype(float)
+
             .to_numpy()
+
         )
+
+        # --------------------------------------------------
+        # LINEARITY
+        # --------------------------------------------------
 
         (
             slope,
@@ -184,23 +228,39 @@ if uploaded_file is not None:
         )
 
         residuals = (
-            response - predicted
-        )        
+            response
+            -
+            predicted
+        )
+
         max_residual = np.max(
-            np.abs(residuals)
+            np.abs(
+                residuals
+            )
         )
 
         span = (
-            np.max(generated)
+
+            np.max(
+                generated
+            )
+
             -
-            np.min(generated)
+
+            np.min(
+                generated
+            )
+
         )
 
         if span > 0:
 
             max_residual_percent_fs = (
+
                 max_residual
-                / span
+                /
+                span
+
             ) * 100
 
         else:
@@ -208,9 +268,13 @@ if uploaded_file is not None:
             max_residual_percent_fs = np.nan
 
         linearity_status = (
+
             "PASS"
+
             if r_squared >= r2_limit
+
             else "FAIL"
+
         )
 
         linearity_df = pd.DataFrame({
@@ -229,9 +293,9 @@ if uploaded_file is not None:
 
         })
 
-        # ==================================================
+        # --------------------------------------------------
         # PRECISION
-        # ==================================================
+        # --------------------------------------------------
 
         precision_rows = []
 
@@ -247,13 +311,23 @@ if uploaded_file is not None:
 
                 sd_response = group[
                     "Sensor_Response_umol_mol"
-                ].std(ddof=1)
-
-                rsd = (
-                    sd_response
-                    / mean_response
-                    * 100
+                ].std(
+                    ddof=1
                 )
+
+                if mean_response != 0:
+
+                    rsd_percent = (
+
+                        sd_response
+                        /
+                        mean_response
+
+                    ) * 100
+
+                else:
+
+                    rsd_percent = np.nan
 
                 precision_rows.append({
 
@@ -267,7 +341,7 @@ if uploaded_file is not None:
                         sd_response,
 
                     "RSD_percent":
-                        rsd
+                        rsd_percent
 
                 })
 
@@ -275,34 +349,47 @@ if uploaded_file is not None:
             precision_rows
         )
 
-        max_rsd = (
-            precision_df[
-                "RSD_percent"
-            ].max()
-            if len(precision_df)
-            else np.nan
-        )
+        if len(
+            precision_df
+        ) > 0:
 
-        mean_rsd = (
-            precision_df[
-                "RSD_percent"
-            ].mean()
-            if len(precision_df)
-            else np.nan
-        )
+            max_rsd = (
+                precision_df[
+                    "RSD_percent"
+                ].max()
+            )
+
+            mean_rsd = (
+                precision_df[
+                    "RSD_percent"
+                ].mean()
+            )
+
+        else:
+
+            max_rsd = np.nan
+            mean_rsd = np.nan
 
         precision_status = (
-            "PASS"
-            if (
-                pd.notna(max_rsd)
-                and max_rsd <= precision_limit
-            )
-            else "FAIL"
-        )
 
-        # ==================================================
+            "PASS"
+
+            if (
+                pd.notna(
+                    max_rsd
+                )
+                and
+                max_rsd
+                <=
+                precision_limit
+            )
+
+            else "FAIL"
+
+        )
+                # --------------------------------------------------
         # BIAS
-        # ==================================================
+        # --------------------------------------------------
 
         bias_rows = []
 
@@ -324,8 +411,7 @@ if uploaded_file is not None:
                 bias_percent = (
                     bias_umol_mol
                     / conc
-                    * 100
-                )
+                ) * 100
 
             else:
 
@@ -351,23 +437,194 @@ if uploaded_file is not None:
             bias_rows
         )
 
-        max_bias_percent = (
-            bias_df[
-                "Bias_percent"
-            ].abs().max()
-        )
+        if len(bias_df):
 
-        mean_bias_percent = (
-            bias_df[
-                "Bias_percent"
-            ].mean()
-        )
+            max_bias_percent = (
+                bias_df[
+                    "Bias_percent"
+                ].abs().max()
+            )
+
+            mean_bias_percent = (
+                bias_df[
+                    "Bias_percent"
+                ].mean()
+            )
+
+        else:
+
+            max_bias_percent = np.nan
+            mean_bias_percent = np.nan
 
         bias_status = (
+
             "PASS"
-            if max_bias_percent <= bias_limit
+
+            if (
+                pd.notna(
+                    max_bias_percent
+                )
+                and
+                max_bias_percent
+                <=
+                bias_limit
+            )
+
             else "FAIL"
-        )        
+
+        )
+
+        # --------------------------------------------------
+        # HYSTERESIS
+        # Automatic Turnaround Detection
+        # --------------------------------------------------
+
+        hysteresis_rows = []
+
+        max_index = np.argmax(
+            generated
+        )
+
+        up_df = df.iloc[
+            :max_index + 1
+        ]
+
+        down_df = df.iloc[
+            max_index:
+        ]
+
+        common_concentrations = sorted(
+
+            set(
+                up_df[
+                    "Generated_umol_mol"
+                ]
+            ).intersection(
+
+                set(
+                    down_df[
+                        "Generated_umol_mol"
+                    ]
+                )
+
+            )
+
+        )
+
+        for conc in common_concentrations:
+
+            up_response = (
+
+                up_df.loc[
+                    up_df[
+                        "Generated_umol_mol"
+                    ] == conc,
+                    "Sensor_Response_umol_mol"
+                ]
+
+                .mean()
+
+            )
+
+            down_response = (
+
+                down_df.loc[
+                    down_df[
+                        "Generated_umol_mol"
+                    ] == conc,
+                    "Sensor_Response_umol_mol"
+                ]
+
+                .mean()
+
+            )
+
+            hysteresis = abs(
+                up_response
+                -
+                down_response
+            )
+
+            hysteresis_rows.append({
+
+                "Generated_umol_mol":
+                    conc,
+
+                "Up_Response":
+                    up_response,
+
+                "Down_Response":
+                    down_response,
+
+                "Hysteresis_umol_mol":
+                    hysteresis
+
+            })
+
+        hysteresis_df = pd.DataFrame(
+            hysteresis_rows
+        )
+
+        if len(hysteresis_df):
+
+            max_hysteresis = (
+                hysteresis_df[
+                    "Hysteresis_umol_mol"
+                ].max()
+            )
+
+        else:
+
+            max_hysteresis = np.nan
+
+        hysteresis_status = (
+
+            "PASS"
+
+            if (
+                pd.notna(
+                    max_hysteresis
+                )
+                and
+                max_hysteresis
+                <=
+                hysteresis_limit
+            )
+
+            else "FAIL"
+
+        )
+
+        # --------------------------------------------------
+        # OVERALL STATUS
+        # --------------------------------------------------
+
+        all_statuses = [
+
+            linearity_status,
+            precision_status,
+            bias_status,
+            hysteresis_status
+
+        ]
+
+        overall_status = (
+
+            "PASS"
+
+            if all(
+                s == "PASS"
+                for s in all_statuses
+            )
+
+            else "FAIL"
+
+        )
+
+        # --------------------------------------------------
+        # SUMMARY TABLE
+        # --------------------------------------------------
+
         summary_df = pd.DataFrame({
 
             "Metric": [
@@ -380,9 +637,12 @@ if uploaded_file is not None:
                 "Mean RSD (%)",
                 "Maximum Bias (%)",
                 "Mean Bias (%)",
+                "Maximum Hysteresis (µmol/mol)",
                 "Linearity Status",
                 "Precision Status",
-                "Bias Status"
+                "Bias Status",
+                "Hysteresis Status",
+                "Overall Status"
 
             ],
 
@@ -396,32 +656,69 @@ if uploaded_file is not None:
                 mean_rsd,
                 max_bias_percent,
                 mean_bias_percent,
+                max_hysteresis,
                 linearity_status,
                 precision_status,
-                bias_status
+                bias_status,
+                hysteresis_status,
+                overall_status
 
             ]
 
         })
+                # --------------------------------------------------
+        # TABS
+        # --------------------------------------------------
 
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 
             "Summary",
             "Linearity Plot",
             "Linearity Data",
             "Precision",
-            "Bias"
+            "Bias",
+            "Hysteresis"
 
         ])
 
+        # --------------------------------------------------
+        # SUMMARY TAB
+        # --------------------------------------------------
+
         with tab1:
 
+            st.subheader(
+                "Performance Summary"
+            )
+
             st.dataframe(
-                round_df(summary_df),
+                round_df(
+                    summary_df
+                ),
                 use_container_width=True
             )
 
+        # --------------------------------------------------
+        # LINEARITY PLOT TAB
+        # --------------------------------------------------
+
         with tab2:
+
+            st.subheader(
+                f"Linearity Assessment (R² = {r_squared:.4f})"
+            )
+
+            st.write(
+                f"Slope = {slope:.4g}"
+            )
+
+            st.write(
+                f"Intercept = {intercept:.4g}"
+            )
+
+            st.write(
+                f"Status = {linearity_status}"
+            )
 
             chart_df = pd.DataFrame({
 
@@ -439,28 +736,36 @@ if uploaded_file is not None:
             points = alt.Chart(
                 chart_df
             ).mark_circle(
-                size=80,
-                color="blue"
+                color="blue",
+                size=80
             ).encode(
 
-                x="Generated",
+                x=alt.X(
+                    "Generated:Q",
+                    title="Generated Amount Fraction (µmol/mol)"
+                ),
 
-                y="Response"
+                y=alt.Y(
+                    "Response:Q",
+                    title="Sensor Response (µmol/mol)"
+                )
 
             )
 
             line = alt.Chart(
+
                 chart_df.sort_values(
                     "Generated"
                 )
+
             ).mark_line(
                 color="red",
-                strokeWidth=2
+                strokeWidth=3
             ).encode(
 
-                x="Generated",
+                x="Generated:Q",
 
-                y="Fit"
+                y="Fit:Q"
 
             )
 
@@ -469,30 +774,208 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
-            st.write(
-                f"R² = {r_squared:.4f}"
-            )
+        # --------------------------------------------------
+        # LINEARITY DATA TAB
+        # --------------------------------------------------
 
         with tab3:
 
+            st.subheader(
+                "Linearity Data"
+            )
+
             st.dataframe(
-                round_df(linearity_df),
+                round_df(
+                    linearity_df
+                ),
                 use_container_width=True
             )
+                    # --------------------------------------------------
+        # PRECISION TAB
+        # --------------------------------------------------
 
         with tab4:
 
-            st.dataframe(
-                round_df(precision_df),
-                use_container_width=True
+            st.subheader(
+                "Precision Assessment"
             )
+
+            if len(precision_df):
+
+                st.dataframe(
+                    round_df(
+                        precision_df
+                    ),
+                    use_container_width=True
+                )
+
+                st.metric(
+                    "Maximum RSD (%)",
+                    f"{max_rsd:.4g}"
+                )
+
+                st.metric(
+                    "Mean RSD (%)",
+                    f"{mean_rsd:.4g}"
+                )
+
+                st.metric(
+                    "Precision Status",
+                    precision_status
+                )
+
+            else:
+
+                st.warning(
+                    "No replicate measurements available."
+                )
+
+        # --------------------------------------------------
+        # BIAS TAB
+        # --------------------------------------------------
 
         with tab5:
 
+            st.subheader(
+                "Bias Assessment"
+            )
+
             st.dataframe(
-                round_df(bias_df),
+                round_df(
+                    bias_df
+                ),
                 use_container_width=True
             )
+
+            st.metric(
+                "Maximum Bias (%)",
+                f"{max_bias_percent:.4g}"
+            )
+
+            st.metric(
+                "Mean Bias (%)",
+                f"{mean_bias_percent:.4g}"
+            )
+
+            st.metric(
+                "Bias Status",
+                bias_status
+            )
+
+        # --------------------------------------------------
+        # HYSTERESIS TAB
+        # --------------------------------------------------
+
+        with tab6:
+
+            st.subheader(
+                "Hysteresis Assessment"
+            )
+
+            if len(hysteresis_df):
+
+                chart_df = pd.concat([
+
+                    pd.DataFrame({
+
+                        "Generated":
+                            hysteresis_df[
+                                "Generated_umol_mol"
+                            ],
+
+                        "Response":
+                            hysteresis_df[
+                                "Up_Response"
+                            ],
+
+                        "Direction":
+                            "Up"
+
+                    }),
+
+                    pd.DataFrame({
+
+                        "Generated":
+                            hysteresis_df[
+                                "Generated_umol_mol"
+                            ],
+
+                        "Response":
+                            hysteresis_df[
+                                "Down_Response"
+                            ],
+
+                        "Direction":
+                            "Down"
+
+                    })
+
+                ])
+
+                lines = alt.Chart(
+                    chart_df
+                ).mark_line(
+                    strokeWidth=3
+                ).encode(
+
+                    x=alt.X(
+                        "Generated:Q",
+                        title="Generated Amount Fraction (µmol/mol)"
+                    ),
+
+                    y=alt.Y(
+                        "Response:Q",
+                        title="Sensor Response (µmol/mol)"
+                    ),
+
+                    color=alt.Color(
+                        "Direction:N",
+                        title="Cycle Direction"
+                    )
+
+                )
+
+                points = alt.Chart(
+                    chart_df
+                ).mark_circle(
+                    size=80
+                ).encode(
+
+                    x="Generated:Q",
+
+                    y="Response:Q",
+
+                    color="Direction:N"
+
+                )
+
+                st.altair_chart(
+                    lines + points,
+                    use_container_width=True
+                )
+
+                st.dataframe(
+                    round_df(
+                        hysteresis_df
+                    ),
+                    use_container_width=True
+                )
+
+                st.metric(
+                    "Maximum Hysteresis (µmol/mol)",
+                    f"{max_hysteresis:.4g}"
+                )
+
+                st.metric(
+                    "Hysteresis Status",
+                    hysteresis_status
+                )
+
+            else:
+
+                st.warning(
+                    "No hysteresis cycle could be identified from the data."
+                )
 
     except Exception as e:
 
