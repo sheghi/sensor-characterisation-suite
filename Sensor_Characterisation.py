@@ -37,22 +37,18 @@ def round_sig(x, sig=4):
 
 
 def round_df(df):
-    """
-    Apply significant figure rounding to all numeric
-    values in a dataframe.
-    """
 
-    return df.applymap(
-        lambda x:
-        round_sig(x, 4)
-        if isinstance(
-            x,
-            (int, float, np.number)
-        )
-        else x
-    )
+    df_copy = df.copy()
 
+    for col in df_copy.columns:
 
+        if pd.api.types.is_numeric_dtype(df_copy[col]):
+
+            df_copy[col] = df_copy[col].apply(
+                lambda x: round_sig(x, 4)
+            )
+
+    return df_copy
 def fit_calibration(
     generated_amount_fraction,
     sensor_response
