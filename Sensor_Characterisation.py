@@ -294,6 +294,7 @@ if uploaded_file:
         tab1, tab2, tab3 = st.tabs([
             "Summary",
             "Linearity Data",
+            "Calibration Plot",
             "Methods"
         ])
 
@@ -323,8 +324,24 @@ if uploaded_file:
                 round_df(linearity_df),
                 use_container_width=True
             )
+            with tab3:
 
-        with tab3:
+             st.subheader(
+             "Calibration Curve"
+            )
+
+             chart_df = pd.DataFrame({
+
+            "Generated Amount Fraction":
+             generated,
+
+           "Sensor Response":
+            response,
+
+ 
+            
+
+        with tab4:
 
             st.markdown(
                 """
