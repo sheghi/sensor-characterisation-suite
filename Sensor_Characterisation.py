@@ -367,4 +367,133 @@ if uploaded_file is not None:
             "PASS"
             if max_bias_percent <= bias_limit
             else "FAIL"
-        )
+        )        
+        summary_df = pd.DataFrame({
+
+            "Metric": [
+
+                "Slope",
+                "Intercept",
+                "R²",
+                "Maximum Residual (%FS)",
+                "Maximum RSD (%)",
+                "Mean RSD (%)",
+                "Maximum Bias (%)",
+                "Mean Bias (%)",
+                "Linearity Status",
+                "Precision Status",
+                "Bias Status"
+
+            ],
+
+            "Value": [
+
+                slope,
+                intercept,
+                r_squared,
+                max_residual_percent_fs,
+                max_rsd,
+                mean_rsd,
+                max_bias_percent,
+                mean_bias_percent,
+                linearity_status,
+                precision_status,
+                bias_status
+
+            ]
+
+        })
+
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+
+            "Summary",
+            "Linearity Plot",
+            "Linearity Data",
+            "Precision",
+            "Bias"
+
+        ])
+
+        with tab1:
+
+            st.dataframe(
+                round_df(summary_df),
+                use_container_width=True
+            )
+
+        with tab2:
+
+            chart_df = pd.DataFrame({
+
+                "Generated":
+                    generated,
+
+                "Response":
+                    response,
+
+                "Fit":
+                    predicted
+
+            })
+
+            points = alt.Chart(
+                chart_df
+            ).mark_circle(
+                size=80,
+                color="blue"
+            ).encode(
+
+                x="Generated",
+
+                y="Response"
+
+            )
+
+            line = alt.Chart(
+                chart_df.sort_values(
+                    "Generated"
+                )
+            ).mark_line(
+                color="red",
+                strokeWidth=2
+            ).encode(
+
+                x="Generated",
+
+                y="Fit"
+
+            )
+
+            st.altair_chart(
+                points + line,
+                use_container_width=True
+            )
+
+            st.write(
+                f"R² = {r_squared:.4f}"
+            )
+
+        with tab3:
+
+            st.dataframe(
+                round_df(linearity_df),
+                use_container_width=True
+            )
+
+        with tab4:
+
+            st.dataframe(
+                round_df(precision_df),
+                use_container_width=True
+            )
+
+        with tab5:
+
+            st.dataframe(
+                round_df(bias_df),
+                use_container_width=True
+            )
+
+    except Exception as e:
+
+        st.exception(e)
