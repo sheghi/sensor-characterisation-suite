@@ -46,7 +46,9 @@ def round_df(df):
 
     for col in df_copy.columns:
 
-        if pd.api.types.is_numeric_dtype(df_copy[col]):
+        if pd.api.types.is_numeric_dtype(
+            df_copy[col]
+        ):
 
             df_copy[col] = df_copy[col].apply(
                 lambda x: round_sig(x, 4)
@@ -100,8 +102,6 @@ uploaded_file = st.file_uploader(
 
 r2_limit = st.number_input(
     "Minimum Acceptable R²",
-    min_value=0.0,
-    max_value=1.0,
     value=0.9950,
     step=0.0001,
     format="%.4f"
@@ -109,9 +109,12 @@ r2_limit = st.number_input(
 
 precision_limit = st.number_input(
     "Maximum Precision (%RSD)",
-    min_value=0.0,
-    value=2.0,
-    step=0.1
+    value=2.0
+)
+
+bias_limit = st.number_input(
+    "Maximum Bias (%)",
+    value=2.0
 )
 
 # ==========================================================
@@ -124,15 +127,21 @@ if uploaded_file is not None:
 
         if uploaded_file.name.endswith(".csv"):
 
-            df = pd.read_csv(uploaded_file)
+            df = pd.read_csv(
+                uploaded_file
+            )
 
         else:
 
-            df = pd.read_excel(uploaded_file)
+            df = pd.read_excel(
+                uploaded_file
+            )
 
         required_columns = [
+
             "Generated_umol_mol",
             "Sensor_Response_umol_mol"
+
         ]
 
         missing_columns = [
@@ -163,15 +172,12 @@ if uploaded_file is not None:
             .to_numpy()
         )
 
-        # ==================================================
-        # LINEARITY
-        # ==================================================
-
         (
             slope,
             intercept,
             r_squared,
             predicted
+
         ) = fit_calibration(
             generated,
             response
@@ -180,8 +186,7 @@ if uploaded_file is not None:
         residuals = (
             response - predicted
         )
-
-        max_residual = np.max(
+                max_residual = np.max(
             np.abs(residuals)
         )
 
@@ -194,7 +199,8 @@ if uploaded_file is not None:
         if span > 0:
 
             max_residual_percent_fs = (
-                max_residual / span
+                max_residual
+                / span
             ) * 100
 
         else:
@@ -243,31 +249,25 @@ if uploaded_file is not None:
                     "Sensor_Response_umol_mol"
                 ].std(ddof=1)
 
-                if mean_response != 0:
-
-                    rsd_percent = (
-                        sd_response
-                        /
-                        mean_response
-                    ) * 100
-
-                else:
-
-                    rsd_percent = np.nan
+                rsd = (
+                    sd_response
+                    / mean_response
+                    * 100
+                )
 
                 precision_rows.append({
 
                     "Generated_umol_mol":
                         conc,
 
-                    "Mean_Response_umol_mol":
+                    "Mean_Response":
                         mean_response,
 
-                    "SD_umol_mol":
+                    "SD":
                         sd_response,
 
                     "RSD_percent":
-                        rsd_percent
+                        rsd
 
                 })
 
@@ -275,21 +275,21 @@ if uploaded_file is not None:
             precision_rows
         )
 
-# ===================== END BLOCK 1 =====================
-        if len(precision_df) > 0:
-
-            max_rsd = precision_df[
+        max_rsd = (
+            precision_df[
                 "RSD_percent"
             ].max()
+            if len(precision_df)
+            else np.nan
+        )
 
-            mean_rsd = precision_df[
+        mean_rsd = (
+            precision_df[
                 "RSD_percent"
             ].mean()
-
-        else:
-
-            max_rsd = np.nan
-            mean_rsd = np.nan
+            if len(precision_df)
+            else np.nan
+        )
 
         precision_status = (
             "PASS"
@@ -301,22 +301,88 @@ if uploaded_file is not None:
         )
 
         # ==================================================
-        # SUMMARY
+        # BIAS
         # ==================================================
 
-        summary_df = pd.DataFrame({
+        bias_rows = []
+
+        for conc, group in df.groupby(
+            "Generated_umol_mol"
+        ):
+
+            mean_response = group[
+                "Sensor_Response_umol_mol"
+            ].mean()
+
+            bias_umol_mol = (
+                mean_response
+                - conc
+            )
+
+            if conc != 0:
+
+                bias_percent = (
+                    bias_umol_mol
+                    / conc
+                    * 100
+                )
+
+            else:
+
+                bias_percent = np.nan
+
+            bias_rows.append({
+
+                "Generated_umol_mol":
+                    conc,
+
+                "Mean_Response":
+                    mean_response,
+
+                "Bias_umol_mol":
+                    bias_umol_mol,
+
+                "Bias_percent":
+                    bias_percent
+
+            })
+
+        bias_df = pd.DataFrame(
+            bias_rows
+        )
+
+        max_bias_percent = (
+            bias_df[
+                "Bias_percent"
+            ].abs().max()
+        )
+
+        mean_bias_percent = (
+            bias_df[
+                "Bias_percent"
+            ].mean()
+        )
+
+        bias_status = (
+            "PASS"
+            if max_bias_percent <= bias_limit
+            else "FAIL"
+        )
+                summary_df = pd.DataFrame({
 
             "Metric": [
 
                 "Slope",
                 "Intercept",
                 "R²",
-                "Maximum Residual (µmol/mol)",
                 "Maximum Residual (%FS)",
                 "Maximum RSD (%)",
                 "Mean RSD (%)",
+                "Maximum Bias (%)",
+                "Mean Bias (%)",
                 "Linearity Status",
-                "Precision Status"
+                "Precision Status",
+                "Bias Status"
 
             ],
 
@@ -325,33 +391,28 @@ if uploaded_file is not None:
                 slope,
                 intercept,
                 r_squared,
-                max_residual,
                 max_residual_percent_fs,
                 max_rsd,
                 mean_rsd,
+                max_bias_percent,
+                mean_bias_percent,
                 linearity_status,
-                precision_status
+                precision_status,
+                bias_status
 
             ]
 
         })
 
-        # ==================================================
-        # TABS
-        # ==================================================
-
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
 
             "Summary",
             "Linearity Plot",
             "Linearity Data",
-            "Precision"
+            "Precision",
+            "Bias"
 
         ])
-
-        # ==================================================
-        # SUMMARY TAB
-        # ==================================================
 
         with tab1:
 
@@ -360,15 +421,7 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
-        # ==================================================
-        # LINEARITY PLOT
-        # ==================================================
-
         with tab2:
-
-            st.subheader(
-                f"Linearity Assessment (R² = {r_squared:.4f})"
-            )
 
             chart_df = pd.DataFrame({
 
@@ -390,24 +443,16 @@ if uploaded_file is not None:
                 color="blue"
             ).encode(
 
-                x=alt.X(
-                    "Generated",
-                    title="Generated Amount Fraction (µmol/mol)"
-                ),
+                x="Generated",
 
-                y=alt.Y(
-                    "Response",
-                    title="Sensor Response (µmol/mol)"
-                )
+                y="Response"
 
             )
 
             line = alt.Chart(
-
                 chart_df.sort_values(
                     "Generated"
                 )
-
             ).mark_line(
                 color="red",
                 strokeWidth=2
@@ -425,20 +470,8 @@ if uploaded_file is not None:
             )
 
             st.write(
-                f"Slope = {slope:.4g}"
+                f"R² = {r_squared:.4f}"
             )
-
-            st.write(
-                f"Intercept = {intercept:.4g}"
-            )
-
-            st.write(
-                f"Status = {linearity_status}"
-            )
-
-        # ==================================================
-        # LINEARITY DATA
-        # ==================================================
 
         with tab3:
 
@@ -447,37 +480,21 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
-        # ==================================================
-        # PRECISION
-        # ==================================================
-
         with tab4:
 
-            if len(precision_df) > 0:
+            st.dataframe(
+                round_df(precision_df),
+                use_container_width=True
+            )
 
-                st.dataframe(
-                    round_df(precision_df),
-                    use_container_width=True
-                )
+        with tab5:
 
-                st.write(
-                    f"Maximum RSD (%) = {round_sig(max_rsd)}"
-                )
-
-                st.write(
-                    f"Mean RSD (%) = {round_sig(mean_rsd)}"
-                )
-
-                st.write(
-                    f"Status = {precision_status}"
-                )
-
-            else:
-
-                st.warning(
-                    "No replicate measurements available."
-                )
+            st.dataframe(
+                round_df(bias_df),
+                use_container_width=True
+            )
 
     except Exception as e:
 
         st.exception(e)
+        
