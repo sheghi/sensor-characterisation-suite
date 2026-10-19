@@ -5,9 +5,8 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-
 # ==========================================================
-# PAGE CONFIGURATION
+# PAGE SETUP
 # ==========================================================
 
 st.set_page_config(
@@ -16,7 +15,6 @@ st.set_page_config(
 )
 
 st.title("Sensor Characterisation Suite")
-
 
 # ==========================================================
 # FUNCTIONS
@@ -31,24 +29,24 @@ def round_sig(x, sig=4):
         return x
 
     if x == 0:
-        return 0
+        return "0"
 
-    return float(f"{x:.{sig}g}")
+    return f"{x:.{sig}g}"
 
 
 def round_df(df):
 
-    df_copy = df.copy()
+    df2 = df.copy()
 
-    for col in df_copy.columns:
+    for col in df2.columns:
 
-        if pd.api.types.is_numeric_dtype(df_copy[col]):
+        if pd.api.types.is_numeric_dtype(df2[col]):
 
-            df_copy[col] = df_copy[col].apply(
+            df2[col] = df2[col].apply(
                 lambda x: round_sig(x, 4)
             )
 
-    return df_copy
+    return df2
 
 
 def fit_calibration(x, y):
@@ -64,13 +62,15 @@ def fit_calibration(x, y):
         x.reshape(-1, 1)
     )
 
-    slope = float(model.coef_[0])
+    slope = float(
+        model.coef_[0]
+    )
 
     intercept = float(
         model.intercept_
     )
 
-    r_squared = float(
+    r2 = float(
         r2_score(
             y,
             predicted
@@ -80,13 +80,12 @@ def fit_calibration(x, y):
     return (
         slope,
         intercept,
-        r_squared,
+        r2,
         predicted
     )
 
-
 # ==========================================================
-# USER INPUT
+# USER SETTINGS
 # ==========================================================
 
 uploaded_file = st.file_uploader(
@@ -103,18 +102,13 @@ r2_limit = st.number_input(
     format="%.4f"
 )
 
-
 # ==========================================================
-# PROCESS DATA
+# MAIN
 # ==========================================================
 
 if uploaded_file is not None:
 
     try:
-
-        # --------------------------------------------------
-        # READ FILE
-        # --------------------------------------------------
 
         if uploaded_file.name.endswith(".csv"):
 
@@ -128,19 +122,19 @@ if uploaded_file is not None:
                 uploaded_file
             )
 
-        # --------------------------------------------------
-        # CHECK COLUMNS
-        # --------------------------------------------------
-
         required_columns = [
+
             "Generated_umol_mol",
             "Sensor_Response_umol_mol"
+
         ]
 
         missing_columns = [
-            col
-            for col in required_columns
-            if col not in df.columns
+
+            c
+            for c in required_columns
+            if c not in df.columns
+
         ]
 
         if missing_columns:
@@ -151,39 +145,39 @@ if uploaded_file is not None:
 
             st.stop()
 
-        # --------------------------------------------------
-        # EXTRACT DATA
-        # --------------------------------------------------
-
         generated = (
+
             df["Generated_umol_mol"]
+
             .astype(float)
+
             .to_numpy()
+
         )
 
         response = (
-            df["Sensor_Response_umol_mol"]
-            .astype(float)
-            .to_numpy()
-        )
 
-        # --------------------------------------------------
-        # LINEAR REGRESSION
-        # --------------------------------------------------
+            df["Sensor_Response_umol_mol"]
+
+            .astype(float)
+
+            .to_numpy()
+
+        )
 
         (
             slope,
             intercept,
             r_squared,
             predicted
+
         ) = fit_calibration(
             generated,
             response
         )
 
         residuals = (
-            response
-            - predicted
+            response - predicted
         )
 
         max_residual = np.max(
@@ -191,63 +185,62 @@ if uploaded_file is not None:
         )
 
         span = (
+
             np.max(generated)
-            - np.min(generated)
+            -
+            np.min(generated)
+
         )
 
         if span > 0:
 
             max_residual_percent_fs = (
-                max_residual / span
+
+                max_residual
+                /
+                span
+
             ) * 100
 
         else:
 
             max_residual_percent_fs = np.nan
 
-        # --------------------------------------------------
-        # PASS / FAIL
-        # --------------------------------------------------
+        status = (
 
-        linearity_status = (
             "PASS"
-            if r_squared >= r2_limit
-            else "FAIL"
-        )
 
-        # --------------------------------------------------
-        # SUMMARY TABLE
-        # --------------------------------------------------
+            if r_squared >= r2_limit
+
+            else "FAIL"
+
+        )
 
         summary_df = pd.DataFrame({
 
             "Metric": [
+
                 "Slope",
                 "Intercept",
                 "R²",
-                "Maximum Residual (µmol/mol)",
+                "Maximum Residual (umol/mol)",
                 "Maximum Residual (%FS)",
-                "Linearity Status"
+                "Status"
+
             ],
 
             "Value": [
+
                 slope,
                 intercept,
                 r_squared,
                 max_residual,
                 max_residual_percent_fs,
-                linearity_status
+                status
+
             ]
 
         })
-
-        summary_df = round_df(
-            summary_df
-        )
-
-        # --------------------------------------------------
-        # LINEARITY DATA
-        # --------------------------------------------------
 
         linearity_df = pd.DataFrame({
 
@@ -265,15 +258,7 @@ if uploaded_file is not None:
 
         })
 
-        linearity_df = round_df(
-            linearity_df
-        )
-
-        # --------------------------------------------------
-        # PLOT DATA
-        # --------------------------------------------------
-
-        scatter_df = pd.DataFrame({
+        chart_df = pd.DataFrame({
 
             "Generated_umol_mol":
                 generated,
@@ -283,61 +268,47 @@ if uploaded_file is not None:
 
         })
 
-        # --------------------------------------------------
-        # TABS
-        # --------------------------------------------------
-
         tab1, tab2, tab3 = st.tabs([
-            "Summary",
-            "Calibration Plot",
-            "Linearity Data"
-        ])
 
-        # --------------------------------------------------
-        # SUMMARY TAB
-        # --------------------------------------------------
+            "Summary",
+            "Linearity Plot",
+            "Linearity Data"
+
+        ])
 
         with tab1:
 
             st.dataframe(
-                summary_df,
+                round_df(summary_df),
                 use_container_width=True
             )
 
-        # --------------------------------------------------
-        # CALIBRATION PLOT TAB
-        # --------------------------------------------------
-
         with tab2:
-
-            st.subheader(
-                f"Linearity Assessment (R² = {r_squared:.4f})"
-            )
 
             st.markdown(
                 f"""
-**Regression Equation**
+### Linearity Assessment
 
-Sensor Response = {slope:.4g} × Generated Amount Fraction + {intercept:.4g}
+**R² = {r_squared:.4f}**
 
-**Status:** {linearity_status}
+**Slope = {slope:.4g}**
+
+**Intercept = {intercept:.4g}**
+
+**Status = {status}**
 """
             )
 
             st.scatter_chart(
-                scatter_df,
+                chart_df,
                 x="Generated_umol_mol",
                 y="Sensor_Response_umol_mol"
             )
 
-        # --------------------------------------------------
-        # DATA TAB
-        # --------------------------------------------------
-
         with tab3:
 
             st.dataframe(
-                linearity_df,
+                round_df(linearity_df),
                 use_container_width=True
             )
 
