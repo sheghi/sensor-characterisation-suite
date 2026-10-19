@@ -46,9 +46,7 @@ def round_df(df):
 
     for col in df_copy.columns:
 
-        if pd.api.types.is_numeric_dtype(
-            df_copy[col]
-        ):
+        if pd.api.types.is_numeric_dtype(df_copy[col]):
 
             df_copy[col] = df_copy[col].apply(
                 lambda x: round_sig(x, 4)
@@ -92,7 +90,7 @@ def fit_calibration(x, y):
 
 
 # ==========================================================
-# USER INPUT
+# USER INPUTS
 # ==========================================================
 
 uploaded_file = st.file_uploader(
@@ -109,6 +107,13 @@ r2_limit = st.number_input(
     format="%.4f"
 )
 
+precision_limit = st.number_input(
+    "Maximum Precision (%RSD)",
+    min_value=0.0,
+    value=2.0,
+    step=0.1
+)
+
 # ==========================================================
 # MAIN
 # ==========================================================
@@ -119,15 +124,11 @@ if uploaded_file is not None:
 
         if uploaded_file.name.endswith(".csv"):
 
-            df = pd.read_csv(
-                uploaded_file
-            )
+            df = pd.read_csv(uploaded_file)
 
         else:
 
-            df = pd.read_excel(
-                uploaded_file
-            )
+            df = pd.read_excel(uploaded_file)
 
         required_columns = [
             "Generated_umol_mol",
@@ -162,6 +163,10 @@ if uploaded_file is not None:
             .to_numpy()
         )
 
+        # ==================================================
+        # LINEARITY
+        # ==================================================
+
         (
             slope,
             intercept,
@@ -182,7 +187,8 @@ if uploaded_file is not None:
 
         span = (
             np.max(generated)
-            - np.min(generated)
+            -
+            np.min(generated)
         )
 
         if span > 0:
@@ -195,33 +201,11 @@ if uploaded_file is not None:
 
             max_residual_percent_fs = np.nan
 
-        status = (
+        linearity_status = (
             "PASS"
             if r_squared >= r2_limit
             else "FAIL"
         )
-
-        summary_df = pd.DataFrame({
-
-            "Metric": [
-                "Slope",
-                "Intercept",
-                "R²",
-                "Maximum Residual (µmol/mol)",
-                "Maximum Residual (%FS)",
-                "Status"
-            ],
-
-            "Value": [
-                slope,
-                intercept,
-                r_squared,
-                max_residual,
-                max_residual_percent_fs,
-                status
-            ]
-
-        })
 
         linearity_df = pd.DataFrame({
 
@@ -239,14 +223,134 @@ if uploaded_file is not None:
 
         })
 
-        tab1, tab2, tab3 = st.tabs([
-            "Summary",
-            "Linearity Plot",
-            "Linearity Data"
-        ])
+        # ==================================================
+        # PRECISION
+        # ==================================================
+
+        precision_rows = []
+
+        for conc, group in df.groupby(
+            "Generated_umol_mol"
+        ):
+
+            if len(group) > 1:
+
+                mean_response = group[
+                    "Sensor_Response_umol_mol"
+                ].mean()
+
+                sd_response = group[
+                    "Sensor_Response_umol_mol"
+                ].std(ddof=1)
+
+                if mean_response != 0:
+
+                    rsd_percent = (
+                        sd_response
+                        /
+                        mean_response
+                    ) * 100
+
+                else:
+
+                    rsd_percent = np.nan
+
+                precision_rows.append({
+
+                    "Generated_umol_mol":
+                        conc,
+
+                    "Mean_Response_umol_mol":
+                        mean_response,
+
+                    "SD_umol_mol":
+                        sd_response,
+
+                    "RSD_percent":
+                        rsd_percent
+
+                })
+
+        precision_df = pd.DataFrame(
+            precision_rows
+        )
+
+# ===================== END BLOCK 1 =====================
+        if len(precision_df) > 0:
+
+            max_rsd = precision_df[
+                "RSD_percent"
+            ].max()
+
+            mean_rsd = precision_df[
+                "RSD_percent"
+            ].mean()
+
+        else:
+
+            max_rsd = np.nan
+            mean_rsd = np.nan
+
+        precision_status = (
+            "PASS"
+            if (
+                pd.notna(max_rsd)
+                and max_rsd <= precision_limit
+            )
+            else "FAIL"
+        )
 
         # ==================================================
         # SUMMARY
+        # ==================================================
+
+        summary_df = pd.DataFrame({
+
+            "Metric": [
+
+                "Slope",
+                "Intercept",
+                "R²",
+                "Maximum Residual (µmol/mol)",
+                "Maximum Residual (%FS)",
+                "Maximum RSD (%)",
+                "Mean RSD (%)",
+                "Linearity Status",
+                "Precision Status"
+
+            ],
+
+            "Value": [
+
+                slope,
+                intercept,
+                r_squared,
+                max_residual,
+                max_residual_percent_fs,
+                max_rsd,
+                mean_rsd,
+                linearity_status,
+                precision_status
+
+            ]
+
+        })
+
+        # ==================================================
+        # TABS
+        # ==================================================
+
+        tab1, tab2, tab3, tab4 = st.tabs([
+
+            "Summary",
+            "Linearity Plot",
+            "Linearity Data",
+            "Precision"
+
+        ])
+
+        # ==================================================
+        # SUMMARY TAB
         # ==================================================
 
         with tab1:
@@ -257,7 +361,7 @@ if uploaded_file is not None:
             )
 
         # ==================================================
-        # PLOT
+        # LINEARITY PLOT
         # ==================================================
 
         with tab2:
@@ -266,15 +370,7 @@ if uploaded_file is not None:
                 f"Linearity Assessment (R² = {r_squared:.4f})"
             )
 
-            st.markdown(
-                f"""
-**Sensor Response = {slope:.4g} × Generated Amount Fraction + {intercept:.4g}**
-
-**Status: {status}**
-"""
-            )
-
-            plot_df = pd.DataFrame({
+            chart_df = pd.DataFrame({
 
                 "Generated":
                     generated,
@@ -288,7 +384,7 @@ if uploaded_file is not None:
             })
 
             points = alt.Chart(
-                plot_df
+                chart_df
             ).mark_circle(
                 size=80,
                 color="blue"
@@ -307,9 +403,11 @@ if uploaded_file is not None:
             )
 
             line = alt.Chart(
-                plot_df.sort_values(
+
+                chart_df.sort_values(
                     "Generated"
                 )
+
             ).mark_line(
                 color="red",
                 strokeWidth=2
@@ -326,8 +424,20 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
+            st.write(
+                f"Slope = {slope:.4g}"
+            )
+
+            st.write(
+                f"Intercept = {intercept:.4g}"
+            )
+
+            st.write(
+                f"Status = {linearity_status}"
+            )
+
         # ==================================================
-        # DATA
+        # LINEARITY DATA
         # ==================================================
 
         with tab3:
@@ -336,6 +446,37 @@ if uploaded_file is not None:
                 round_df(linearity_df),
                 use_container_width=True
             )
+
+        # ==================================================
+        # PRECISION
+        # ==================================================
+
+        with tab4:
+
+            if len(precision_df) > 0:
+
+                st.dataframe(
+                    round_df(precision_df),
+                    use_container_width=True
+                )
+
+                st.write(
+                    f"Maximum RSD (%) = {round_sig(max_rsd)}"
+                )
+
+                st.write(
+                    f"Mean RSD (%) = {round_sig(mean_rsd)}"
+                )
+
+                st.write(
+                    f"Status = {precision_status}"
+                )
+
+            else:
+
+                st.warning(
+                    "No replicate measurements available."
+                )
 
     except Exception as e:
 
