@@ -1,230 +1,824 @@
-# sensor-characterisation-suite
+import streamlit as st
+import pandas as pd
+import numpy as np
+import altair as alt
 
-SCOPE
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 
-The application evaluates sensor performance using experimentally generated calibration data.
 
-The following performance characteristics are currently assessed:
+# ==========================================================
+# PAGE SETUP
+# ==========================================================
 
-• Linearity • Precision (Repeatability) • Bias
+st.set_page_config(
+    page_title="Sensor Characterisation Suite",
+    layout="wide"
+)
 
-The software accepts calibration datasets in CSV or Excel format and automatically performs the required calculations.
+st.title("Sensor Characterisation Suite")
 
-INPUT DATA REQUIREMENTS
 
-The software requires a dataset containing the following columns:
+# ==========================================================
+# FUNCTIONS
+# ==========================================================
 
-Generated_umol_mol Sensor_Response_umol_mol
+def round_sig(x, sig=4):
 
-Example:
+    if pd.isna(x):
+        return x
 
-Generated_umol_mol Sensor_Response_umol_mol
+    if isinstance(x, str):
+        return x
 
-10 10.1 10 10.2 10 10.0
+    if x == 0:
+        return 0
 
-20 20.3 20 20.1 20 20.2
+    return round(
+        x,
+        sig - int(np.floor(np.log10(abs(x)))) - 1
+    )
 
-50 50.4 50 50.5 50 50.3
 
-Multiple measurements at the same concentration level are required for precision calculations.
+def round_df(df):
 
-SOURCE OF DATA
+    df_copy = df.copy()
 
-Reference Data
+    for col in df_copy.columns:
 
-Generated concentration values are supplied from calibration systems such as:
+        if pd.api.types.is_numeric_dtype(
+            df_copy[col]
+        ):
 
-• Dynamic dilution systems • Mass flow controller systems • Calibrated gas standards • Certified reference materials
+            df_copy[col] = df_copy[col].apply(
+                lambda x: round_sig(x, 4)
+            )
 
-These values are treated as the reference or true concentration.
+    return df_copy
 
-Sensor Data
 
-Sensor response values are produced by the sensor under test and represent the measured concentration.
+def fit_calibration(x, y):
 
-LINEARITY ASSESSMENT
+    model = LinearRegression()
 
-Objective
+    model.fit(
+        x.reshape(-1, 1),
+        y
+    )
 
-To determine whether the sensor response is proportional to the generated concentration over the calibration range.
+    predicted = model.predict(
+        x.reshape(-1, 1)
+    )
 
-Method
+    slope = float(model.coef_[0])
 
-Linear regression is applied using:
+    intercept = float(
+        model.intercept_
+    )
 
-Sensor Response = (Slope × Generated Concentration) + Intercept
+    r_squared = float(
+        r2_score(
+            y,
+            predicted
+        )
+    )
 
-Inputs
+    return (
+        slope,
+        intercept,
+        r_squared,
+        predicted
+    )
 
-• Generated amount fraction (µmol/mol) • Sensor response (µmol/mol)
 
-Outputs
+# ==========================================================
+# USER INPUTS
+# ==========================================================
 
-• Slope • Intercept • Predicted response • Residuals • Maximum residual • Maximum residual (% Full Scale) • Coefficient of determination (R²)
+uploaded_file = st.file_uploader(
+    "Upload CSV or Excel File",
+    type=["csv", "xlsx"]
+)
 
-Expected Outcome
+r2_limit = st.number_input(
+    "Minimum Acceptable R²",
+    value=0.9950,
+    step=0.0001,
+    format="%.4f"
+)
 
-For an ideal sensor:
+precision_limit = st.number_input(
+    "Maximum Precision (%RSD)",
+    value=2.0
+)
 
-Slope ≈ 1
+bias_limit = st.number_input(
+    "Maximum Bias (%)",
+    value=2.0
+)
 
-Intercept ≈ 0
+hysteresis_limit = st.number_input(
+    "Maximum Hysteresis (µmol/mol)",
+    value=1.0
+)
+# ==========================================================
+# MAIN
+# ==========================================================
 
-R² ≈ 1
+if uploaded_file is not None:
 
-Residuals ≈ 0
+    try:
 
-Typical acceptance criterion:
+        # --------------------------------------------------
+        # READ FILE
+        # --------------------------------------------------
 
-R² ≥ 0.995
+        if uploaded_file.name.endswith(".csv"):
 
-PRECISION ASSESSMENT
+            df = pd.read_csv(
+                uploaded_file
+            )
 
-Objective
+        else:
 
-To evaluate repeatability of sensor measurements.
+            df = pd.read_excel(
+                uploaded_file
+            )
 
-Method
+        # --------------------------------------------------
+        # CHECK REQUIRED COLUMNS
+        # --------------------------------------------------
 
-Replicate measurements at each concentration level are grouped.
+        required_columns = [
 
-The following statistics are calculated:
+            "Generated_umol_mol",
+            "Sensor_Response_umol_mol"
 
-Mean Response
+        ]
 
-Standard Deviation (SD)
+        missing_columns = [
 
-Relative Standard Deviation (RSD%)
+            col
+            for col in required_columns
+            if col not in df.columns
 
-RSD (%) = (SD / Mean Response) × 100
+        ]
 
-Outputs
+        if missing_columns:
 
-• Mean response • Standard deviation • RSD (%) • Maximum observed RSD (%) • Mean RSD (%)
+            st.error(
+                f"Missing columns: {missing_columns}"
+            )
 
-Expected Outcome
+            st.stop()
 
-A highly repeatable sensor should exhibit low variability between replicate measurements.
+        # --------------------------------------------------
+        # EXTRACT DATA
+        # --------------------------------------------------
 
-Typical acceptance criterion:
+        generated = (
+            df["Generated_umol_mol"]
+            .astype(float)
+            .to_numpy()
+        )
 
-Maximum RSD ≤ 2.0 %
+        response = (
+            df["Sensor_Response_umol_mol"]
+            .astype(float)
+            .to_numpy()
+        )
 
-BIAS ASSESSMENT
+        # --------------------------------------------------
+        # LINEARITY
+        # --------------------------------------------------
 
-Objective
+        (
+            slope,
+            intercept,
+            r_squared,
+            predicted
 
-To quantify systematic deviation from the reference value.
+        ) = fit_calibration(
+            generated,
+            response
+        )
 
-Method
+        residuals = (
+            response
+            -
+            predicted
+        )
 
-Bias = Mean Sensor Response − Generated Concentration
+        max_residual = np.max(
+            np.abs(residuals)
+        )
 
-Bias (%) = (Bias / Generated Concentration) × 100
+        span = (
+            np.max(generated)
+            -
+            np.min(generated)
+        )
 
-Outputs
+        if span > 0:
 
-• Bias (µmol/mol) • Bias (%) • Maximum Bias (%) • Mean Bias (%)
+            max_residual_percent_fs = (
+                max_residual
+                /
+                span
+            ) * 100
 
-Expected Outcome
+        else:
 
-For an unbiased sensor:
+            max_residual_percent_fs = np.nan
 
-Bias ≈ 0
+        linearity_status = (
+            "PASS"
+            if r_squared >= r2_limit
+            else "FAIL"
+        )
 
-Bias (%) ≈ 0
+        linearity_df = pd.DataFrame({
 
-Typical acceptance criterion:
+            "Generated_umol_mol":
+                generated,
 
-Maximum Absolute Bias ≤ 2.0 %
+            "Sensor_Response_umol_mol":
+                response,
 
-GRAPHICAL OUTPUTS
+            "Predicted_Response_umol_mol":
+                predicted,
 
-Linearity Plot
+            "Residual_umol_mol":
+                residuals
 
-The software provides a calibration plot containing:
+        })
 
-• Generated concentration on the x-axis • Sensor response on the y-axis • Experimental data points • Linear regression line • R² value
+        # --------------------------------------------------
+        # PRECISION
+        # --------------------------------------------------
 
-Expected Behaviour
+        precision_rows = []
 
-The regression line should closely follow the measured data points for a linear sensor.
+        for conc, group in df.groupby(
+            "Generated_umol_mol"
+        ):
 
-REPORTING
+            if len(group) > 1:
 
-All numerical values are reported to four significant figures.
+                mean_response = group[
+                    "Sensor_Response_umol_mol"
+                ].mean()
 
-The Summary page shall contain:
+                sd_response = group[
+                    "Sensor_Response_umol_mol"
+                ].std(ddof=1)
 
-• Slope • Intercept • R² • Maximum Residual (%FS) • Maximum RSD (%) • Mean RSD (%) • Maximum Bias (%) • Mean Bias (%) • Linearity Status • Precision Status • Bias Status
+                if mean_response != 0:
 
-PASS / FAIL CRITERIA
+                    rsd = (
+                        sd_response
+                        /
+                        mean_response
+                        * 100
+                    )
 
-Linearity
+                else:
 
-PASS if:
+                    rsd = np.nan
 
-R² ≥ User-defined R² limit
+                precision_rows.append({
 
-FAIL if:
+                    "Generated_umol_mol":
+                        conc,
 
-R² < User-defined R² limit
+                    "Mean_Response":
+                        mean_response,
 
-Precision
+                    "SD":
+                        sd_response,
 
-PASS if:
+                    "RSD_percent":
+                        rsd
 
-Maximum RSD ≤ User-defined precision limit
+                })
 
-FAIL if:
+        precision_df = pd.DataFrame(
+            precision_rows
+        )
 
-Maximum RSD > User-defined precision limit
+        if len(precision_df):
 
-Bias
+            max_rsd = (
+                precision_df[
+                    "RSD_percent"
+                ].max()
+            )
 
-PASS if:
+            mean_rsd = (
+                precision_df[
+                    "RSD_percent"
+                ].mean()
+            )
 
-Maximum Absolute Bias ≤ User-defined bias limit
+        else:
 
-FAIL if:
+            max_rsd = np.nan
+            mean_rsd = np.nan
 
-Maximum Absolute Bias > User-defined bias limit
+        precision_status = (
+            "PASS"
+            if (
+                pd.notna(max_rsd)
+                and
+                max_rsd <= precision_limit
+            )
+            else "FAIL"
+        )
+                # --------------------------------------------------
+        # BIAS
+        # --------------------------------------------------
 
-EXAMPLE TEST DATASET
+        bias_rows = []
 
-Generated_umol_mol,Sensor_Response_umol_mol
+        for conc, group in df.groupby(
+            "Generated_umol_mol"
+        ):
 
-10,10.0 10,10.1 10,10.2
+            mean_response = group[
+                "Sensor_Response_umol_mol"
+            ].mean()
 
-20,20.1 20,20.2 20,20.3
+            bias_umol_mol = (
+                mean_response
+                - conc
+            )
 
-50,50.3 50,50.4 50,50.5
+            if conc != 0:
 
-100,100.5 100,100.6 100,100.7
+                bias_percent = (
+                    bias_umol_mol
+                    / conc
+                ) * 100
 
-EXPECTED RESULTS
+            else:
 
-R² > 0.995
+                bias_percent = np.nan
 
-Maximum RSD < 2.0 %
+            bias_rows.append({
 
-Maximum Bias < 2.0 %
+                "Generated_umol_mol":
+                    conc,
 
-Linearity Status = PASS
+                "Mean_Response":
+                    mean_response,
 
-Precision Status = PASS
+                "Bias_umol_mol":
+                    bias_umol_mol,
 
-Bias Status = PASS
+                "Bias_percent":
+                    bias_percent
 
-VERIFICATION REQUIREMENT
+            })
 
-The software shall be considered verified when:
+        bias_df = pd.DataFrame(
+            bias_rows
+        )
 
-Input files are successfully imported.
-Calculations match independently verified manual calculations.
-Graphs display correctly.
-Acceptance criteria are correctly applied.
-Appropriate PASS/FAIL outcomes are assigned for all assessed parameters.
-Results are reported to four significant figures.
+        max_bias_percent = (
+            bias_df[
+                "Bias_percent"
+            ].abs().max()
+        )
 
-End of Test Plan.
+        mean_bias_percent = (
+            bias_df[
+                "Bias_percent"
+            ].mean()
+        )
+
+        bias_status = (
+            "PASS"
+            if (
+                pd.notna(max_bias_percent)
+                and max_bias_percent <= bias_limit
+            )
+            else "FAIL"
+        )
+
+        # --------------------------------------------------
+        # HYSTERESIS
+        # Automatic turnaround detection
+        # --------------------------------------------------
+
+        hysteresis_rows = []
+
+        max_index = np.argmax(
+            generated
+        )
+
+        up_df = df.iloc[
+            :max_index + 1
+        ]
+
+        down_df = df.iloc[
+            max_index:
+        ]
+
+        common_concentrations = sorted(
+
+            set(
+                up_df[
+                    "Generated_umol_mol"
+                ]
+            ).intersection(
+
+                set(
+                    down_df[
+                        "Generated_umol_mol"
+                    ]
+                )
+
+            )
+
+        )
+
+        for conc in common_concentrations:
+
+            up_response = (
+
+                up_df.loc[
+                    up_df[
+                        "Generated_umol_mol"
+                    ] == conc,
+                    "Sensor_Response_umol_mol"
+                ]
+
+                .mean()
+
+            )
+
+            down_response = (
+
+                down_df.loc[
+                    down_df[
+                        "Generated_umol_mol"
+                    ] == conc,
+                    "Sensor_Response_umol_mol"
+                ]
+
+                .mean()
+
+            )
+
+            hysteresis = abs(
+                up_response
+                - down_response
+            )
+
+            hysteresis_rows.append({
+
+                "Generated_umol_mol":
+                    conc,
+
+                "Up_Response":
+                    up_response,
+
+                "Down_Response":
+                    down_response,
+
+                "Hysteresis_umol_mol":
+                    hysteresis
+
+            })
+
+        hysteresis_df = pd.DataFrame(
+            hysteresis_rows
+        )
+
+        if len(hysteresis_df):
+
+            max_hysteresis = (
+                hysteresis_df[
+                    "Hysteresis_umol_mol"
+                ].max()
+            )
+
+        else:
+
+            max_hysteresis = np.nan
+
+        hysteresis_status = (
+            "PASS"
+            if (
+                pd.notna(max_hysteresis)
+                and max_hysteresis <= hysteresis_limit
+            )
+            else "FAIL"
+        )
+
+        # --------------------------------------------------
+        # SUMMARY TABLE
+        # --------------------------------------------------
+
+        summary_df = pd.DataFrame({
+
+            "Metric": [
+
+                "Slope",
+                "Intercept",
+                "R²",
+                "Maximum Residual (%FS)",
+                "Maximum RSD (%)",
+                "Mean RSD (%)",
+                "Maximum Bias (%)",
+                "Mean Bias (%)",
+                "Maximum Hysteresis (µmol/mol)",
+                "Linearity Status",
+                "Precision Status",
+                "Bias Status",
+                "Hysteresis Status"
+
+            ],
+
+            "Value": [
+
+                slope,
+                intercept,
+                r_squared,
+                max_residual_percent_fs,
+                max_rsd,
+                mean_rsd,
+                max_bias_percent,
+                mean_bias_percent,
+                max_hysteresis,
+                linearity_status,
+                precision_status,
+                bias_status,
+                hysteresis_status
+
+            ]
+
+        })
+                # --------------------------------------------------
+        # TABS
+        # --------------------------------------------------
+
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+
+            "Summary",
+            "Linearity Plot",
+            "Linearity Data",
+            "Precision",
+            "Bias",
+            "Hysteresis"
+
+        ])
+
+        # --------------------------------------------------
+        # SUMMARY TAB
+        # --------------------------------------------------
+
+        with tab1:
+
+            st.subheader(
+                "Summary"
+            )
+
+            st.dataframe(
+                round_df(summary_df),
+                use_container_width=True
+            )
+
+        # --------------------------------------------------
+        # LINEARITY PLOT TAB
+        # --------------------------------------------------
+
+        with tab2:
+
+            st.subheader(
+                f"Linearity Assessment (R² = {r_squared:.4f})"
+            )
+
+            st.write(
+                f"Slope = {slope:.4g}"
+            )
+
+            st.write(
+                f"Intercept = {intercept:.4g}"
+            )
+
+            st.write(
+                f"Status = {linearity_status}"
+            )
+
+            chart_df = pd.DataFrame({
+
+                "Generated":
+                    generated,
+
+                "Response":
+                    response,
+
+                "Fit":
+                    predicted
+
+            })
+
+            points = alt.Chart(
+                chart_df
+            ).mark_circle(
+                color="blue",
+                size=80
+            ).encode(
+
+                x=alt.X(
+                    "Generated",
+                    title="Generated Amount Fraction (µmol/mol)"
+                ),
+
+                y=alt.Y(
+                    "Response",
+                    title="Sensor Response (µmol/mol)"
+                )
+
+            )
+
+            line = alt.Chart(
+
+                chart_df.sort_values(
+                    "Generated"
+                )
+
+            ).mark_line(
+                color="red",
+                strokeWidth=2
+            ).encode(
+
+                x="Generated",
+
+                y="Fit"
+
+            )
+
+            st.altair_chart(
+                points + line,
+                use_container_width=True
+            )
+
+        # --------------------------------------------------
+        # LINEARITY DATA TAB
+        # --------------------------------------------------
+
+        with tab3:
+
+            st.subheader(
+                "Linearity Data"
+            )
+
+            st.dataframe(
+                round_df(
+                    linearity_df
+                ),
+                use_container_width=True
+            )
+
+        # --------------------------------------------------
+        # PRECISION TAB
+        # --------------------------------------------------
+
+        with tab4:
+
+            st.subheader(
+                "Precision Assessment"
+            )
+
+            if len(precision_df):
+
+                st.dataframe(
+                    round_df(
+                        precision_df
+                    ),
+                    use_container_width=True
+                )
+
+                st.write(
+                    f"Maximum RSD (%) = {round_sig(max_rsd)}"
+                )
+
+                st.write(
+                    f"Mean RSD (%) = {round_sig(mean_rsd)}"
+                )
+
+                st.write(
+                    f"Status = {precision_status}"
+                )
+
+            else:
+
+                st.warning(
+                    "No replicate measurements available."
+                )
+
+        # --------------------------------------------------
+        # BIAS TAB
+        # --------------------------------------------------
+
+        with tab5:
+
+            st.subheader(
+                "Bias Assessment"
+            )
+
+            st.dataframe(
+                round_df(
+                    bias_df
+                ),
+                use_container_width=True
+            )
+
+            st.write(
+                f"Maximum Bias (%) = {round_sig(max_bias_percent)}"
+            )
+
+            st.write(
+                f"Mean Bias (%) = {round_sig(mean_bias_percent)}"
+            )
+
+            st.write(
+                f"Status = {bias_status}"
+            )
+
+        # --------------------------------------------------
+        # HYSTERESIS TAB
+        # --------------------------------------------------
+
+        with tab6:
+
+            st.subheader(
+                "Hysteresis Assessment"
+            )
+
+            if len(hysteresis_df):
+
+                hysteresis_chart = alt.Chart(
+                    hysteresis_df
+                ).transform_fold(
+
+                    [
+                        "Up_Response",
+                        "Down_Response"
+                    ],
+
+                    as_=[
+                        "Direction",
+                        "Response"
+                    ]
+
+                ).mark_line(
+                    strokeWidth=3
+                ).encode(
+
+                    x=alt.X(
+                        "Generated_umol_mol:Q",
+                        title="Generated Amount Fraction (µmol/mol)"
+                    ),
+
+                    y=alt.Y(
+                        "Response:Q",
+                        title="Sensor Response (µmol/mol)"
+                    ),
+
+                    color="Direction:N"
+
+                )
+
+                st.altair_chart(
+                    hysteresis_chart,
+                    use_container_width=True
+                )
+
+                st.dataframe(
+                    round_df(
+                        hysteresis_df
+                    ),
+                    use_container_width=True
+                )
+
+                st.write(
+                    f"Maximum Hysteresis (µmol/mol) = {round_sig(max_hysteresis)}"
+                )
+
+                st.write(
+                    f"Status = {hysteresis_status}"
+                )
+
+            else:
+
+                st.warning(
+                    "Unable to determine hysteresis."
+                )
+
+    except Exception as e:
+
+        st.exception(e)
+        
