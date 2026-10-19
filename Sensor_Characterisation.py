@@ -317,44 +317,72 @@ if uploaded_file is not None:
         # CALIBRATION PLOT
         # --------------------------------------------------
 
-        with tab2:
+       with tab2:
 
-            st.subheader(
-                "Linearity Assessment"
-            )
+    st.subheader(
+        f"Linearity Assessment (R² = {r_squared:.4f})"
+    )
 
-            st.markdown(
-                f"""
-**R² = {r_squared:.4f}**
+    plot_df = pd.DataFrame({
 
-**Slope = {slope:.4g}**
+        "Generated_umol_mol":
+            generated,
 
-**Intercept = {intercept:.4g}**
+        "Sensor_Response_umol_mol":
+            response,
 
-**Status = {linearity_status}**
-"""
-            )
+        "Predicted_Response":
+            predicted
 
-            st.write(
-                "Sensor Response Data"
-            )
+    })
 
-            st.scatter_chart(
-                scatter_df,
-                x="Generated_umol_mol",
-                y="Sensor_Response_umol_mol"
-            )
+    plot_df = round_df(
+        plot_df
+    )
 
-            st.write(
-                "Regression Fit"
-            )
+    st.write(
+        f"Sensor Response = {slope:.4g} × Generated Amount Fraction + {intercept:.4g}"
+    )
 
-            st.line_chart(
-                fit_df,
-                x="Generated_umol_mol",
-                y="Regression_Fit"
-            )
+    st.write(
+        f"Linearity Status: {linearity_status}"
+    )
 
+    st.write(
+        "Measured Sensor Response"
+    )
+
+    st.scatter_chart(
+        plot_df,
+        x="Generated_umol_mol",
+        y="Sensor_Response_umol_mol"
+    )
+
+    st.write(
+        "Regression Line"
+    )
+
+    fit_df = pd.DataFrame({
+
+        "Generated_umol_mol":
+            np.sort(generated),
+
+        "Regression_Fit":
+            predicted[
+                np.argsort(generated)
+            ]
+
+    })
+
+    fit_df = round_df(
+        fit_df
+    )
+
+    st.line_chart(
+        fit_df,
+        x="Generated_umol_mol",
+        y="Regression_Fit"
+    )
         # --------------------------------------------------
         # DATA TABLE
         # --------------------------------------------------
