@@ -5,7 +5,6 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-
 # ==========================================================
 # PAGE SETUP
 # ==========================================================
@@ -16,7 +15,6 @@ st.set_page_config(
 )
 
 st.title("Sensor Characterisation Suite")
-
 
 # ==========================================================
 # FUNCTIONS
@@ -84,9 +82,8 @@ def fit_calibration(x, y):
         predicted
     )
 
-
 # ==========================================================
-# USER INPUTS
+# USER INPUT
 # ==========================================================
 
 uploaded_file = st.file_uploader(
@@ -102,7 +99,6 @@ r2_limit = st.number_input(
     step=0.0001,
     format="%.4f"
 )
-
 
 # ==========================================================
 # PROCESS DATA
@@ -129,22 +125,18 @@ if uploaded_file is not None:
             )
 
         # --------------------------------------------------
-        # CHECK REQUIRED COLUMNS
+        # CHECK COLUMNS
         # --------------------------------------------------
 
         required_columns = [
-
             "Generated_umol_mol",
             "Sensor_Response_umol_mol"
-
         ]
 
         missing_columns = [
-
             col
             for col in required_columns
             if col not in df.columns
-
         ]
 
         if missing_columns:
@@ -160,19 +152,15 @@ if uploaded_file is not None:
         # --------------------------------------------------
 
         generated = (
-
             df["Generated_umol_mol"]
             .astype(float)
             .values
-
         )
 
         response = (
-
             df["Sensor_Response_umol_mol"]
             .astype(float)
             .values
-
         )
 
         # --------------------------------------------------
@@ -184,7 +172,6 @@ if uploaded_file is not None:
             intercept,
             r_squared,
             predicted
-
         ) = fit_calibration(
             generated,
             response
@@ -207,9 +194,7 @@ if uploaded_file is not None:
         if span > 0:
 
             max_residual_percent_fs = (
-                max_residual
-                /
-                span
+                max_residual / span
             ) * 100
 
         else:
@@ -227,7 +212,7 @@ if uploaded_file is not None:
         )
 
         # --------------------------------------------------
-        # SUMMARY TABLE
+        # SUMMARY
         # --------------------------------------------------
 
         summary_df = pd.DataFrame({
@@ -257,7 +242,7 @@ if uploaded_file is not None:
         })
 
         # --------------------------------------------------
-        # LINEARITY DATA
+        # LINEARITY TABLE
         # --------------------------------------------------
 
         linearity_df = pd.DataFrame({
@@ -277,93 +262,33 @@ if uploaded_file is not None:
         })
 
         # --------------------------------------------------
-        # PLOT DATA
+        # CALIBRATION PLOT DATA
         # --------------------------------------------------
 
-        plot_df = pd.DataFrame({
+        plot_points = pd.DataFrame({
 
             "Generated_umol_mol":
                 generated,
 
             "Sensor_Response_umol_mol":
-                response,
+                response
 
-            "Predicted_Response":
+        })
+
+        plot_fit = pd.DataFrame({
+
+            "Generated_umol_mol":
+                generated,
+
+            "Regression_Fit":
                 predicted
 
         })
 
-        plot_df = plot_df.sort_values(
+        plot_fit = plot_fit.sort_values(
             "Generated_umol_mol"
         )
 
         # --------------------------------------------------
         # TABS
-        # --------------------------------------------------
-
-        tab1, tab2, tab3 = st.tabs([
-
-            "Summary",
-            "Calibration Plot",
-            "Linearity Data"
-
-        ])
-
-        # --------------------------------------------------
-        # SUMMARY
-        # --------------------------------------------------
-
-        with tab1:
-
-            st.subheader(
-                "Linearity Summary"
-            )
-
-            st.dataframe(
-                round_df(summary_df),
-                use_container_width=True
-            )
-
-        # --------------------------------------------------
-        # CALIBRATION PLOT
-        # --------------------------------------------------
-
-        with tab2:
-
-            st.subheader(
-                "Calibration Curve"
-            )
-
-            st.line_chart(
-                plot_df,
-                x="Generated_umol_mol",
-                y=[
-                    "Sensor_Response_umol_mol",
-                    "Predicted_Response"
-                ]
-            )
-
-            st.markdown(
-                f"""
-**Slope:** {slope:.4g}
-
-**Intercept:** {intercept:.4g}
-
-**R²:** {r_squared:.4g}
-"""
-            )
-
-        # --------------------------------------------------
-        # DATA TABLE
-        # --------------------------------------------------
-
-        with tab3:
-
-            st.dataframe(
-                round_df(linearity_df),
-                use_container_width=True
-            )
-
-    except Exception as e:
-
-        st.exception(e)
+        # --------------------------------------------
