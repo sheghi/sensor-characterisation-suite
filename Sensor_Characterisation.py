@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import altair as alt
 
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+
 
 # ==========================================================
 # PAGE SETUP
@@ -15,6 +17,7 @@ st.set_page_config(
 )
 
 st.title("Sensor Characterisation Suite")
+
 
 # ==========================================================
 # FUNCTIONS
@@ -29,24 +32,29 @@ def round_sig(x, sig=4):
         return x
 
     if x == 0:
-        return "0"
+        return 0
 
-    return f"{x:.{sig}g}"
+    return round(
+        x,
+        sig - int(np.floor(np.log10(abs(x)))) - 1
+    )
 
 
 def round_df(df):
 
-    df2 = df.copy()
+    df_copy = df.copy()
 
-    for col in df2.columns:
+    for col in df_copy.columns:
 
-        if pd.api.types.is_numeric_dtype(df2[col]):
+        if pd.api.types.is_numeric_dtype(
+            df_copy[col]
+        ):
 
-            df2[col] = df2[col].apply(
+            df_copy[col] = df_copy[col].apply(
                 lambda x: round_sig(x, 4)
             )
 
-    return df2
+    return df_copy
 
 
 def fit_calibration(x, y):
@@ -62,15 +70,13 @@ def fit_calibration(x, y):
         x.reshape(-1, 1)
     )
 
-    slope = float(
-        model.coef_[0]
-    )
+    slope = float(model.coef_[0])
 
     intercept = float(
         model.intercept_
     )
 
-    r2 = float(
+    r_squared = float(
         r2_score(
             y,
             predicted
@@ -80,12 +86,13 @@ def fit_calibration(x, y):
     return (
         slope,
         intercept,
-        r2,
+        r_squared,
         predicted
     )
 
+
 # ==========================================================
-# USER SETTINGS
+# USER INPUT
 # ==========================================================
 
 uploaded_file = st.file_uploader(
@@ -123,17 +130,15 @@ if uploaded_file is not None:
             )
 
         required_columns = [
-
             "Generated_umol_mol",
             "Sensor_Response_umol_mol"
-
         ]
 
         missing_columns = [
 
-            c
-            for c in required_columns
-            if c not in df.columns
+            col
+            for col in required_columns
+            if col not in df.columns
 
         ]
 
@@ -146,23 +151,15 @@ if uploaded_file is not None:
             st.stop()
 
         generated = (
-
             df["Generated_umol_mol"]
-
             .astype(float)
-
             .to_numpy()
-
         )
 
         response = (
-
             df["Sensor_Response_umol_mol"]
-
             .astype(float)
-
             .to_numpy()
-
         )
 
         (
@@ -170,7 +167,6 @@ if uploaded_file is not None:
             intercept,
             r_squared,
             predicted
-
         ) = fit_calibration(
             generated,
             response
@@ -185,21 +181,14 @@ if uploaded_file is not None:
         )
 
         span = (
-
             np.max(generated)
-            -
-            np.min(generated)
-
+            - np.min(generated)
         )
 
         if span > 0:
 
             max_residual_percent_fs = (
-
-                max_residual
-                /
-                span
-
+                max_residual / span
             ) * 100
 
         else:
@@ -207,37 +196,29 @@ if uploaded_file is not None:
             max_residual_percent_fs = np.nan
 
         status = (
-
             "PASS"
-
             if r_squared >= r2_limit
-
             else "FAIL"
-
         )
 
         summary_df = pd.DataFrame({
 
             "Metric": [
-
                 "Slope",
                 "Intercept",
                 "R²",
-                "Maximum Residual (umol/mol)",
+                "Maximum Residual (µmol/mol)",
                 "Maximum Residual (%FS)",
                 "Status"
-
             ],
 
             "Value": [
-
                 slope,
                 intercept,
                 r_squared,
                 max_residual,
                 max_residual_percent_fs,
                 status
-
             ]
 
         })
@@ -258,23 +239,15 @@ if uploaded_file is not None:
 
         })
 
-        chart_df = pd.DataFrame({
-
-            "Generated_umol_mol":
-                generated,
-
-            "Sensor_Response_umol_mol":
-                response
-
-        })
-
         tab1, tab2, tab3 = st.tabs([
-
             "Summary",
             "Linearity Plot",
             "Linearity Data"
-
         ])
+
+        # ==================================================
+        # SUMMARY
+        # ==================================================
 
         with tab1:
 
@@ -283,27 +256,79 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
+        # ==================================================
+        # PLOT
+        # ==================================================
+
         with tab2:
+
+            st.subheader(
+                f"Linearity Assessment (R² = {r_squared:.4f})"
+            )
 
             st.markdown(
                 f"""
-### Linearity Assessment
+**Sensor Response = {slope:.4g} × Generated Amount Fraction + {intercept:.4g}**
 
-**R² = {r_squared:.4f}**
-
-**Slope = {slope:.4g}**
-
-**Intercept = {intercept:.4g}**
-
-**Status = {status}**
+**Status: {status}**
 """
             )
 
-            st.scatter_chart(
-                chart_df,
-                x="Generated_umol_mol",
-                y="Sensor_Response_umol_mol"
+            plot_df = pd.DataFrame({
+
+                "Generated":
+                    generated,
+
+                "Response":
+                    response,
+
+                "Fit":
+                    predicted
+
+            })
+
+            points = alt.Chart(
+                plot_df
+            ).mark_circle(
+                size=80,
+                color="blue"
+            ).encode(
+
+                x=alt.X(
+                    "Generated",
+                    title="Generated Amount Fraction (µmol/mol)"
+                ),
+
+                y=alt.Y(
+                    "Response",
+                    title="Sensor Response (µmol/mol)"
+                )
+
             )
+
+            line = alt.Chart(
+                plot_df.sort_values(
+                    "Generated"
+                )
+            ).mark_line(
+                color="red",
+                strokeWidth=2
+            ).encode(
+
+                x="Generated",
+
+                y="Fit"
+
+            )
+
+            st.altair_chart(
+                points + line,
+                use_container_width=True
+            )
+
+        # ==================================================
+        # DATA
+        # ==================================================
 
         with tab3:
 
