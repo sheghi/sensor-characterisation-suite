@@ -368,133 +368,185 @@ if uploaded_file is not None:
             if max_bias_percent <= bias_limit
             else "FAIL"
         )
-                summary_df = pd.DataFrame({
+                max_residual = np.max(
+            np.abs(residuals)
+        )
 
-            "Metric": [
+        span = (
+            np.max(generated)
+            -
+            np.min(generated)
+        )
 
-                "Slope",
-                "Intercept",
-                "R²",
-                "Maximum Residual (%FS)",
-                "Maximum RSD (%)",
-                "Mean RSD (%)",
-                "Maximum Bias (%)",
-                "Mean Bias (%)",
-                "Linearity Status",
-                "Precision Status",
-                "Bias Status"
+        if span > 0:
 
-            ],
+            max_residual_percent_fs = (
+                max_residual
+                / span
+            ) * 100
 
-            "Value": [
+        else:
 
-                slope,
-                intercept,
-                r_squared,
-                max_residual_percent_fs,
-                max_rsd,
-                mean_rsd,
-                max_bias_percent,
-                mean_bias_percent,
-                linearity_status,
-                precision_status,
-                bias_status
+            max_residual_percent_fs = np.nan
 
-            ]
+        linearity_status = (
+            "PASS"
+            if r_squared >= r2_limit
+            else "FAIL"
+        )
+
+        linearity_df = pd.DataFrame({
+
+            "Generated_umol_mol":
+                generated,
+
+            "Sensor_Response_umol_mol":
+                response,
+
+            "Predicted_Response_umol_mol":
+                predicted,
+
+            "Residual_umol_mol":
+                residuals
 
         })
 
-        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        # ==================================================
+        # PRECISION
+        # ==================================================
 
-            "Summary",
-            "Linearity Plot",
-            "Linearity Data",
-            "Precision",
-            "Bias"
+        precision_rows = []
 
-        ])
+        for conc, group in df.groupby(
+            "Generated_umol_mol"
+        ):
 
-        with tab1:
+            if len(group) > 1:
 
-            st.dataframe(
-                round_df(summary_df),
-                use_container_width=True
+                mean_response = group[
+                    "Sensor_Response_umol_mol"
+                ].mean()
+
+                sd_response = group[
+                    "Sensor_Response_umol_mol"
+                ].std(ddof=1)
+
+                rsd = (
+                    sd_response
+                    / mean_response
+                    * 100
+                )
+
+                precision_rows.append({
+
+                    "Generated_umol_mol":
+                        conc,
+
+                    "Mean_Response":
+                        mean_response,
+
+                    "SD":
+                        sd_response,
+
+                    "RSD_percent":
+                        rsd
+
+                })
+
+        precision_df = pd.DataFrame(
+            precision_rows
+        )
+
+        max_rsd = (
+            precision_df[
+                "RSD_percent"
+            ].max()
+            if len(precision_df)
+            else np.nan
+        )
+
+        mean_rsd = (
+            precision_df[
+                "RSD_percent"
+            ].mean()
+            if len(precision_df)
+            else np.nan
+        )
+
+        precision_status = (
+            "PASS"
+            if (
+                pd.notna(max_rsd)
+                and max_rsd <= precision_limit
+            )
+            else "FAIL"
+        )
+
+        # ==================================================
+        # BIAS
+        # ==================================================
+
+        bias_rows = []
+
+        for conc, group in df.groupby(
+            "Generated_umol_mol"
+        ):
+
+            mean_response = group[
+                "Sensor_Response_umol_mol"
+            ].mean()
+
+            bias_umol_mol = (
+                mean_response
+                - conc
             )
 
-        with tab2:
+            if conc != 0:
 
-            chart_df = pd.DataFrame({
+                bias_percent = (
+                    bias_umol_mol
+                    / conc
+                    * 100
+                )
 
-                "Generated":
-                    generated,
+            else:
 
-                "Response":
-                    response,
+                bias_percent = np.nan
 
-                "Fit":
-                    predicted
+            bias_rows.append({
+
+                "Generated_umol_mol":
+                    conc,
+
+                "Mean_Response":
+                    mean_response,
+
+                "Bias_umol_mol":
+                    bias_umol_mol,
+
+                "Bias_percent":
+                    bias_percent
 
             })
 
-            points = alt.Chart(
-                chart_df
-            ).mark_circle(
-                size=80,
-                color="blue"
-            ).encode(
+        bias_df = pd.DataFrame(
+            bias_rows
+        )
 
-                x="Generated",
+        max_bias_percent = (
+            bias_df[
+                "Bias_percent"
+            ].abs().max()
+        )
 
-                y="Response"
+        mean_bias_percent = (
+            bias_df[
+                "Bias_percent"
+            ].mean()
+        )
 
-            )
-
-            line = alt.Chart(
-                chart_df.sort_values(
-                    "Generated"
-                )
-            ).mark_line(
-                color="red",
-                strokeWidth=2
-            ).encode(
-
-                x="Generated",
-
-                y="Fit"
-
-            )
-
-            st.altair_chart(
-                points + line,
-                use_container_width=True
-            )
-
-            st.write(
-                f"R² = {r_squared:.4f}"
-            )
-
-        with tab3:
-
-            st.dataframe(
-                round_df(linearity_df),
-                use_container_width=True
-            )
-
-        with tab4:
-
-            st.dataframe(
-                round_df(precision_df),
-                use_container_width=True
-            )
-
-        with tab5:
-
-            st.dataframe(
-                round_df(bias_df),
-                use_container_width=True
-            )
-
-    except Exception as e:
-
-        st.exception(e)
-        
+        bias_status = (
+            "PASS"
+            if max_bias_percent <= bias_limit
+            else "FAIL"
+        )
