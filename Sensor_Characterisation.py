@@ -38,17 +38,17 @@ def round_sig(x, sig=4):
 
 def round_df(df):
 
-    df = df.copy()
+    df_copy = df.copy()
 
-    for col in df.columns:
+    for col in df_copy.columns:
 
-        if pd.api.types.is_numeric_dtype(df[col]):
+        if pd.api.types.is_numeric_dtype(df_copy[col]):
 
-            df[col] = df[col].apply(
-                lambda value: round_sig(value, 4)
+            df_copy[col] = df_copy[col].apply(
+                lambda x: round_sig(x, 4)
             )
 
-    return df
+    return df_copy
 
 
 def fit_calibration(x, y):
@@ -86,7 +86,7 @@ def fit_calibration(x, y):
 
 
 # ==========================================================
-# USER INPUTS
+# USER INPUT
 # ==========================================================
 
 uploaded_file = st.file_uploader(
@@ -105,7 +105,7 @@ r2_limit = st.number_input(
 
 
 # ==========================================================
-# MAIN
+# PROCESS DATA
 # ==========================================================
 
 if uploaded_file is not None:
@@ -129,7 +129,7 @@ if uploaded_file is not None:
             )
 
         # --------------------------------------------------
-        # CHECK INPUT COLUMNS
+        # CHECK COLUMNS
         # --------------------------------------------------
 
         required_columns = [
@@ -161,7 +161,7 @@ if uploaded_file is not None:
             .to_numpy()
         )
 
-        sensor_response = (
+        response = (
             df["Sensor_Response_umol_mol"]
             .astype(float)
             .to_numpy()
@@ -175,15 +175,15 @@ if uploaded_file is not None:
             slope,
             intercept,
             r_squared,
-            predicted_response
+            predicted
         ) = fit_calibration(
             generated,
-            sensor_response
+            response
         )
 
         residuals = (
-            sensor_response
-            - predicted_response
+            response
+            - predicted
         )
 
         max_residual = np.max(
@@ -198,8 +198,7 @@ if uploaded_file is not None:
         if span > 0:
 
             max_residual_percent_fs = (
-                max_residual
-                / span
+                max_residual / span
             ) * 100
 
         else:
@@ -242,8 +241,12 @@ if uploaded_file is not None:
 
         })
 
+        summary_df = round_df(
+            summary_df
+        )
+
         # --------------------------------------------------
-        # LINEARITY TABLE
+        # LINEARITY DATA
         # --------------------------------------------------
 
         linearity_df = pd.DataFrame({
@@ -252,31 +255,23 @@ if uploaded_file is not None:
                 generated,
 
             "Sensor_Response_umol_mol":
-                sensor_response,
+                response,
 
             "Predicted_Response_umol_mol":
-                predicted_response,
+                predicted,
 
             "Residual_umol_mol":
                 residuals
 
         })
 
+        linearity_df = round_df(
+            linearity_df
+        )
+
         # --------------------------------------------------
         # PLOT DATA
         # --------------------------------------------------
-
-        fit_df = pd.DataFrame({
-
-            "Generated_umol_mol":
-                generated,
-
-            "Regression_Fit":
-                predicted_response
-
-        }).sort_values(
-            "Generated_umol_mol"
-        )
 
         scatter_df = pd.DataFrame({
 
@@ -284,7 +279,7 @@ if uploaded_file is not None:
                 generated,
 
             "Sensor_Response_umol_mol":
-                sensor_response
+                response
 
         })
 
@@ -299,98 +294,50 @@ if uploaded_file is not None:
         ])
 
         # --------------------------------------------------
-        # SUMMARY
+        # SUMMARY TAB
         # --------------------------------------------------
 
         with tab1:
 
-            st.subheader(
-                "Linearity Summary"
-            )
-
             st.dataframe(
-                round_df(summary_df),
+                summary_df,
                 use_container_width=True
             )
 
         # --------------------------------------------------
-        # CALIBRATION PLOT
+        # CALIBRATION PLOT TAB
         # --------------------------------------------------
 
-       with tab2:
+        with tab2:
 
-    st.subheader(
-        f"Linearity Assessment (R² = {r_squared:.4f})"
-    )
+            st.subheader(
+                f"Linearity Assessment (R² = {r_squared:.4f})"
+            )
 
-    plot_df = pd.DataFrame({
+            st.markdown(
+                f"""
+**Regression Equation**
 
-        "Generated_umol_mol":
-            generated,
+Sensor Response = {slope:.4g} × Generated Amount Fraction + {intercept:.4g}
 
-        "Sensor_Response_umol_mol":
-            response,
+**Status:** {linearity_status}
+"""
+            )
 
-        "Predicted_Response":
-            predicted
+            st.scatter_chart(
+                scatter_df,
+                x="Generated_umol_mol",
+                y="Sensor_Response_umol_mol"
+            )
 
-    })
-
-    plot_df = round_df(
-        plot_df
-    )
-
-    st.write(
-        f"Sensor Response = {slope:.4g} × Generated Amount Fraction + {intercept:.4g}"
-    )
-
-    st.write(
-        f"Linearity Status: {linearity_status}"
-    )
-
-    st.write(
-        "Measured Sensor Response"
-    )
-
-    st.scatter_chart(
-        plot_df,
-        x="Generated_umol_mol",
-        y="Sensor_Response_umol_mol"
-    )
-
-    st.write(
-        "Regression Line"
-    )
-
-    fit_df = pd.DataFrame({
-
-        "Generated_umol_mol":
-            np.sort(generated),
-
-        "Regression_Fit":
-            predicted[
-                np.argsort(generated)
-            ]
-
-    })
-
-    fit_df = round_df(
-        fit_df
-    )
-
-    st.line_chart(
-        fit_df,
-        x="Generated_umol_mol",
-        y="Regression_Fit"
-    )
         # --------------------------------------------------
-        # DATA TABLE
+        # DATA TAB
         # --------------------------------------------------
 
         with tab3:
 
             st.dataframe(
-                round_df(linearity_df),
+                linearity_df,
                 use_container_width=True
             )
 
