@@ -6,7 +6,6 @@ import altair as alt
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-
 # ==========================================================
 # PAGE SETUP
 # ==========================================================
@@ -19,7 +18,6 @@ st.set_page_config(
 st.title(
     "Sensor Characterisation Suite"
 )
-
 
 # ==========================================================
 # FUNCTIONS
@@ -40,13 +38,10 @@ def round_sig(x, sig=4):
         x,
         sig - int(
             np.floor(
-                np.log10(
-                    abs(x)
-                )
+                np.log10(abs(x))
             )
         ) - 1
     )
-
 
 def round_df(df):
 
@@ -63,7 +58,6 @@ def round_df(df):
             )
 
     return df_copy
-
 
 def fit_calibration(x, y):
 
@@ -99,9 +93,7 @@ def fit_calibration(x, y):
         r_squared,
         predicted
     )
-
-
-# ==========================================================
+    # ==========================================================
 # USER INPUTS
 # ==========================================================
 
@@ -131,6 +123,7 @@ hysteresis_limit = st.number_input(
     "Maximum Hysteresis (µmol/mol)",
     value=1.0
 )
+
 # ==========================================================
 # MAIN
 # ==========================================================
@@ -189,27 +182,19 @@ if uploaded_file is not None:
         # --------------------------------------------------
 
         generated = (
-
             df[
                 "Generated_umol_mol"
             ]
-
             .astype(float)
-
             .to_numpy()
-
         )
 
         response = (
-
             df[
                 "Sensor_Response_umol_mol"
             ]
-
             .astype(float)
-
             .to_numpy()
-
         )
 
         # --------------------------------------------------
@@ -240,27 +225,21 @@ if uploaded_file is not None:
         )
 
         span = (
-
             np.max(
                 generated
             )
-
             -
-
             np.min(
                 generated
             )
-
         )
 
         if span > 0:
 
             max_residual_percent_fs = (
-
                 max_residual
                 /
                 span
-
             ) * 100
 
         else:
@@ -292,8 +271,7 @@ if uploaded_file is not None:
                 residuals
 
         })
-
-        # --------------------------------------------------
+                # --------------------------------------------------
         # PRECISION
         # --------------------------------------------------
 
@@ -318,11 +296,9 @@ if uploaded_file is not None:
                 if mean_response != 0:
 
                     rsd_percent = (
-
                         sd_response
                         /
                         mean_response
-
                     ) * 100
 
                 else:
@@ -387,7 +363,8 @@ if uploaded_file is not None:
             else "FAIL"
 
         )
-                # --------------------------------------------------
+
+        # --------------------------------------------------
         # BIAS
         # --------------------------------------------------
 
@@ -437,7 +414,9 @@ if uploaded_file is not None:
             bias_rows
         )
 
-        if len(bias_df):
+        if len(
+            bias_df
+        ) > 0:
 
             max_bias_percent = (
                 bias_df[
@@ -473,25 +452,28 @@ if uploaded_file is not None:
             else "FAIL"
 
         )
-
-        # --------------------------------------------------
+                # --------------------------------------------------
         # HYSTERESIS
         # Automatic Turnaround Detection
         # --------------------------------------------------
 
         hysteresis_rows = []
 
-        max_index = np.argmax(
+        max_value = np.max(
             generated
         )
 
+        max_index = np.where(
+            generated == max_value
+        )[0][0]
+
         up_df = df.iloc[
             :max_index + 1
-        ]
+        ].copy()
 
         down_df = df.iloc[
-            max_index:
-        ]
+            max_index + 1:
+        ].copy()
 
         common_concentrations = sorted(
 
@@ -539,7 +521,7 @@ if uploaded_file is not None:
 
             )
 
-            hysteresis = abs(
+            hysteresis_value = abs(
                 up_response
                 -
                 down_response
@@ -557,7 +539,7 @@ if uploaded_file is not None:
                     down_response,
 
                 "Hysteresis_umol_mol":
-                    hysteresis
+                    hysteresis_value
 
             })
 
@@ -565,12 +547,20 @@ if uploaded_file is not None:
             hysteresis_rows
         )
 
-        if len(hysteresis_df):
+        if len(
+            hysteresis_df
+        ) > 0:
 
-            max_hysteresis = (
+            max_hysteresis = float(
+
                 hysteresis_df[
                     "Hysteresis_umol_mol"
-                ].max()
+                ]
+
+                .abs()
+
+                .max()
+
             )
 
         else:
@@ -708,17 +698,28 @@ if uploaded_file is not None:
                 f"Linearity Assessment (R² = {r_squared:.4f})"
             )
 
-            st.write(
-                f"Slope = {slope:.4g}"
-            )
+            col1, col2, col3 = st.columns(3)
 
-            st.write(
-                f"Intercept = {intercept:.4g}"
-            )
+            with col1:
 
-            st.write(
-                f"Status = {linearity_status}"
-            )
+                st.metric(
+                    "Slope",
+                    f"{slope:.4g}"
+                )
+
+            with col2:
+
+                st.metric(
+                    "Intercept",
+                    f"{intercept:.4g}"
+                )
+
+            with col3:
+
+                st.metric(
+                    "Status",
+                    linearity_status
+                )
 
             chart_df = pd.DataFrame({
 
@@ -809,20 +810,28 @@ if uploaded_file is not None:
                     use_container_width=True
                 )
 
-                st.metric(
-                    "Maximum RSD (%)",
-                    f"{max_rsd:.4g}"
-                )
+                col1, col2, col3 = st.columns(3)
 
-                st.metric(
-                    "Mean RSD (%)",
-                    f"{mean_rsd:.4g}"
-                )
+                with col1:
 
-                st.metric(
-                    "Precision Status",
-                    precision_status
-                )
+                    st.metric(
+                        "Maximum RSD (%)",
+                        f"{max_rsd:.4g}"
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Mean RSD (%)",
+                        f"{mean_rsd:.4g}"
+                    )
+
+                with col3:
+
+                    st.metric(
+                        "Precision Status",
+                        precision_status
+                    )
 
             else:
 
@@ -847,20 +856,28 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
-            st.metric(
-                "Maximum Bias (%)",
-                f"{max_bias_percent:.4g}"
-            )
+            col1, col2, col3 = st.columns(3)
 
-            st.metric(
-                "Mean Bias (%)",
-                f"{mean_bias_percent:.4g}"
-            )
+            with col1:
 
-            st.metric(
-                "Bias Status",
-                bias_status
-            )
+                st.metric(
+                    "Maximum Bias (%)",
+                    f"{max_bias_percent:.4g}"
+                )
+
+            with col2:
+
+                st.metric(
+                    "Mean Bias (%)",
+                    f"{mean_bias_percent:.4g}"
+                )
+
+            with col3:
+
+                st.metric(
+                    "Bias Status",
+                    bias_status
+                )
 
         # --------------------------------------------------
         # HYSTERESIS TAB
@@ -874,43 +891,24 @@ if uploaded_file is not None:
 
             if len(hysteresis_df):
 
-                chart_df = pd.concat([
+                up_plot_df = up_df.copy()
 
-                    pd.DataFrame({
+                up_plot_df[
+                    "Direction"
+                ] = "Ascending"
 
-                        "Generated":
-                            hysteresis_df[
-                                "Generated_umol_mol"
-                            ],
+                down_plot_df = down_df.copy()
 
-                        "Response":
-                            hysteresis_df[
-                                "Up_Response"
-                            ],
+                down_plot_df[
+                    "Direction"
+                ] = "Descending"
 
-                        "Direction":
-                            "Up"
-
-                    }),
-
-                    pd.DataFrame({
-
-                        "Generated":
-                            hysteresis_df[
-                                "Generated_umol_mol"
-                            ],
-
-                        "Response":
-                            hysteresis_df[
-                                "Down_Response"
-                            ],
-
-                        "Direction":
-                            "Down"
-
-                    })
-
-                ])
+                chart_df = pd.concat(
+                    [
+                        up_plot_df,
+                        down_plot_df
+                    ]
+                )
 
                 lines = alt.Chart(
                     chart_df
@@ -919,31 +917,33 @@ if uploaded_file is not None:
                 ).encode(
 
                     x=alt.X(
-                        "Generated:Q",
+                        "Generated_umol_mol:Q",
                         title="Generated Amount Fraction (µmol/mol)"
                     ),
 
                     y=alt.Y(
-                        "Response:Q",
+                        "Sensor_Response_umol_mol:Q",
                         title="Sensor Response (µmol/mol)"
                     ),
 
                     color=alt.Color(
                         "Direction:N",
                         title="Cycle Direction"
-                    )
+                    ),
+
+                    detail="Direction:N"
 
                 )
 
                 points = alt.Chart(
                     chart_df
                 ).mark_circle(
-                    size=80
+                    size=70
                 ).encode(
 
-                    x="Generated:Q",
+                    x="Generated_umol_mol:Q",
 
-                    y="Response:Q",
+                    y="Sensor_Response_umol_mol:Q",
 
                     color="Direction:N"
 
@@ -961,22 +961,10 @@ if uploaded_file is not None:
                     use_container_width=True
                 )
 
-                st.metric(
-                    "Maximum Hysteresis (µmol/mol)",
-                    f"{max_hysteresis:.4g}"
-                )
+                col1, col2 = st.columns(2)
 
-                st.metric(
-                    "Hysteresis Status",
-                    hysteresis_status
-                )
+                with col1:
 
-            else:
-
-                st.warning(
-                    "No hysteresis cycle could be identified from the data."
-                )
-
-    except Exception as e:
-
-        st.exception(e)
+                    st.metric(
+                        "Maximum Hysteresis (µmol/mol)",
+                     
