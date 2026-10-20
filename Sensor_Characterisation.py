@@ -967,4 +967,22 @@ if uploaded_file is not None:
 
                     st.metric(
                         "Maximum Hysteresis (µmol/mol)",
-                     
+                        f"{max_hysteresis:.4g}"
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Hysteresis Status",
+                        hysteresis_status
+                    )
+
+            else:
+
+                st.warning(
+                    "No hysteresis cycle could be identified from the dataset."
+                )
+
+    except Exception as e:
+
+        st.exception(e)
